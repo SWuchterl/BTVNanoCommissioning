@@ -11,7 +11,7 @@ from BTVNanoCommissioning.utils.correction import (
 )
 
 # user helper function
-from BTVNanoCommissioning.helpers.func import update, dump_lumi, PFCand_link
+from BTVNanoCommissioning.helpers.func import update, dump_lumi, PFCand_link, SV_link
 from BTVNanoCommissioning.helpers.update_branch import missing_branch
 
 ## load histograms & selctions for this workflow
@@ -132,7 +132,7 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Muon cuts
         # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
-        if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
             events.Muon = events.Muon[
                 (events.Muon.pt > 25) & mu_promptmvaid(events, self._campaign)
             ]
@@ -145,7 +145,7 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Electron cuts
         # electron twiki: https://twiki.cern.ch/twiki/bin/viewauth/CMS/CutBasedElectronIdentificationRun2
-        if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
             events.Electron = events.Electron[
                 (events.Electron.pt > 25) & ele_promptmvaid(events, self._campaign)
             ]
@@ -239,6 +239,9 @@ class NanoProcessor(processor.ProcessorABC):
         # Keep the structure of events and pruned the object size
         pruned_ev = events[event_level]
         pruned_ev["SelJet"] = event_jet[event_level][:, :2]
+        # position of each entry within the stored SelJet list itself (0 =
+        # leading, 1 = subleading), not the original NanoAOD Jet index
+        pruned_ev["SelJet", "jetIdx"] = ak.local_index(pruned_ev.SelJet, axis=1)
         pruned_ev["SelMuon"] = events.Muon[event_level][:, 0]
         pruned_ev["SelElectron"] = events.Electron[event_level][:, 0]
         pruned_ev["dr_mujet0"] = pruned_ev.Muon.delta_r(pruned_ev.Jet[:, 0])
@@ -248,6 +251,22 @@ class NanoProcessor(processor.ProcessorABC):
         # Find the PFCands associate with selected jets. Search from jetindex->JetPFCands->PFCand
         if "PFCands" in events.fields:
             pruned_ev.PFCands = PFCand_link(events, event_level, jetindx)
+
+        # Match secondary vertices to the two selected jets. Some private
+        # NanoAOD productions (e.g. CustomSummer24) keep the SV collection
+        # but drop the Jet->SV index link, so check for it too.
+        if (
+            self.selMod == "ttdilep_sf_2D"
+            and "SV" in events.fields
+            and "svIdx1" in events.Jet.fields
+        ):
+            svmass, svd3dsig = SV_link(events, event_level, jetindx)
+            pruned_ev["SelJet", "svmass"] = ak.concatenate(
+                [svmass[0][:, None], svmass[1][:, None]], axis=1
+            )
+            pruned_ev["SelJet", "svd3dsig"] = ak.concatenate(
+                [svd3dsig[0][:, None], svd3dsig[1][:, None]], axis=1
+            )
 
         if self.selMod == "ttdilep_sf_2D":
             pruned_ev["MET"] = event_MET[event_level]
@@ -278,7 +297,15 @@ class NanoProcessor(processor.ProcessorABC):
         # Output arrays
         if self.isArray:
             array_writer(
-                self, pruned_ev, events, weights, systematics, dataset, isRealData
+                self,
+                pruned_ev,
+                events,
+                weights,
+                systematics,
+                dataset,
+                isRealData,
+                schema="SLIM",
+                perJet=(self.selMod == "ttdilep_sf_2D"),
             )
         return {dataset: output}
 

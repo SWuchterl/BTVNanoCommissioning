@@ -8,7 +8,13 @@ from BTVNanoCommissioning.utils.correction import (
     common_shifts,
     reweighting,
 )
-from BTVNanoCommissioning.helpers.func import update, dump_lumi, PFCand_link, flatten
+from BTVNanoCommissioning.helpers.func import (
+    update,
+    dump_lumi,
+    PFCand_link,
+    SV_link,
+    flatten,
+)
 from BTVNanoCommissioning.helpers.update_branch import missing_branch
 from BTVNanoCommissioning.utils.histogramming.histogrammer import (
     histogrammer,
@@ -150,7 +156,7 @@ class NanoProcessor(processor.ProcessorABC):
         ## Lepton cuts
         if isMu:
             # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
-            if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+            if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
                 iso_lep = events.Muon[
                     (events.Muon.pt > 26) & mu_promptmvaid(events, self._campaign)
                 ]
@@ -159,7 +165,7 @@ class NanoProcessor(processor.ProcessorABC):
                     (events.Muon.pt > 26) & mu_idiso(events, self._campaign)
                 ]
         elif isEle:
-            if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+            if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
                 iso_lep = events.Electron[
                     (events.Electron.pt > 32) & ele_promptmvaid(events, self._campaign)
                 ]
@@ -298,7 +304,7 @@ class NanoProcessor(processor.ProcessorABC):
         # )
 
         ## Dilepton veto
-        if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
             dilep_mu = events.Muon[
                 (events.Muon.pt > 12) & mu_promptmvaid(events, self._campaign)
             ]
@@ -306,7 +312,7 @@ class NanoProcessor(processor.ProcessorABC):
             dilep_mu = events.Muon[
                 (events.Muon.pt > 12) & mu_idiso(events, self._campaign)
             ]
-        if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
             dilep_ele = events.Electron[
                 (events.Electron.pt > 15) & ele_promptmvaid(events, self._campaign)
             ]
@@ -471,6 +477,13 @@ class NanoProcessor(processor.ProcessorABC):
         pruned_ev["MuonJet"] = (
             smuon_jet  # leading selected jet fullfilling all event-level cuts
         )
+        # Match secondary vertices to the muon-tagged jet. Some private
+        # NanoAOD productions (e.g. CustomSummer24) keep the SV collection
+        # but drop the Jet->SV index link, so check for it too.
+        if "SV" in events.fields and "svIdx1" in events.Jet.fields:
+            svmass, svd3dsig = SV_link(events, event_level, jetindx)
+            pruned_ev["MuonJet", "svmass"] = svmass
+            pruned_ev["MuonJet", "svd3dsig"] = svd3dsig
         pruned_ev["SoftMuon"] = ssmu
         pruned_ev["OtherJets"] = sotherjets
         pruned_ev["MET_pt"] = smet.pt
@@ -764,8 +777,23 @@ class NanoProcessor(processor.ProcessorABC):
         #######################
 
         if self.isArray:
+            # write out the muon-tagged jet (the fit variable) as "SelJet", matching
+            # the per-jet branch naming used by the other 2D workflows -- one row
+            # per event here since there's only ever one tagged jet, not a list
+            pruned_ev["SelJet"] = pruned_ev["MuonJet"]
+            # always 0: there's only ever one muon-tagged jet stored as "SelJet" here
+            pruned_ev["SelJet", "jetIdx"] = ak.zeros_like(
+                pruned_ev.SelJet.pt, dtype=np.int64
+            )
             array_writer(
-                self, pruned_ev, events, weights, systematics, dataset, isRealData
+                self,
+                pruned_ev,
+                events,
+                weights,
+                systematics,
+                dataset,
+                isRealData,
+                schema="SLIM",
             )
 
         return {dataset: output}

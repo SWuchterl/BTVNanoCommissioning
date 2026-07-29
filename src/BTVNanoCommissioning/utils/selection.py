@@ -51,6 +51,7 @@ def jet_id(events, campaign, max_eta=2.5, min_pt=20):
         "Summer23BPix",
         "Winter24",
         "Summer24",
+        "CustomSummer24",
         "Winter25",
         "Prompt25",
     ]:
@@ -185,7 +186,7 @@ def jet_id(events, campaign, max_eta=2.5, min_pt=20):
 def ele_cuttightid(events, campaign):
     ele_etaSC = (
         events.Electron.eta + events.Electron.deltaEtaSC
-        if campaign not in ["Summer24", "Winter25", "Prompt25"]
+        if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
         else events.Electron.superclusterEta
     )
     elemask = (
@@ -197,7 +198,7 @@ def ele_cuttightid(events, campaign):
 def ele_mvatightid(events, campaign):
     ele_etaSC = (
         events.Electron.eta + events.Electron.deltaEtaSC
-        if campaign not in ["Summer24", "Winter25", "Prompt25"]
+        if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
         else events.Electron.superclusterEta
     )
     elemask = (
@@ -210,14 +211,14 @@ def ele_promptmvaid(events, campaign):
     # https://indico.cern.ch/event/1575017/contributions/6635248/attachments/3115862/5524310/EGammaAug08.pdf
     ele_etaSC = (
         events.Electron.eta + events.Electron.deltaEtaSC
-        if campaign not in ["Summer24", "Winter25", "Prompt25"]
+        if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
         else events.Electron.superclusterEta
     )
     elemask = (
         (abs(ele_etaSC) < 1.4442) | ((abs(ele_etaSC) > 1.566) & (abs(ele_etaSC) < 2.5))
     ) & (
         events.Electron.promptMVA >= 0.9
-        if campaign in ["Summer24", "Winter25", "Prompt25"]
+        if campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
         else 0.3
     )
     return elemask
@@ -764,6 +765,9 @@ btag_wp_dict = {
         },
     },
 }
+# CustomSummer24 is a private NanoAODv15 production on the same MiniAOD
+# conditions as Summer24 -- reuse its precomputed WP thresholds.
+btag_wp_dict["2024_CustomSummer24"] = btag_wp_dict["2024_Summer24"]
 
 
 import os, correctionlib
@@ -1065,3 +1069,6 @@ met_filters = {
         ],
     },
 }
+# CustomSummer24 is a private NanoAODv15 production on the same MiniAOD
+# conditions as Summer24 -- reuse its MET filter list.
+met_filters["CustomSummer24"] = met_filters["Summer24"]

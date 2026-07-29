@@ -147,16 +147,35 @@ def missing_branch(events, campaign=None):
             events.Jet,
             {"btagRobustParTAK4CvNotB": jets.btagRobustParTAK4CvNotB},
         )
-    for tagger in ("UParTAK4",):
+    # NoPIDParTAK4 exposes raw per-flavour class probabilities instead of a
+    # CvB discriminant; the base BvC score is derived from those probabilities.
+    _nopid_probs = (
+        "btagNoPIDParTAK4probb",
+        "btagNoPIDParTAK4probbb",
+        "btagNoPIDParTAK4probc",
+        "btagNoPIDParTAK4probcc",
+        "btagNoPIDParTAK4probg",
+        "btagNoPIDParTAK4probud",
+        "btagNoPIDParTAK4probs",
+    )
+
+    for tagger in ("UParTAK4", "NoPIDParTAK4"):
         bvc_name = f"btag{tagger}BvC"
         cvb_name = f"btag{tagger}CvB"
-        if not hasattr(events.Jet, bvc_name) and hasattr(events.Jet, cvb_name):
+        base_bvc = None
+        if not hasattr(events.Jet, bvc_name):
+            if hasattr(events.Jet, cvb_name):
+                cvb = events.Jet[cvb_name]
+                base_bvc = ak.where(cvb < 0.0, -1, 1.0 - cvb)
+            elif tagger == "NoPIDParTAK4" and all(
+                hasattr(events.Jet, p) for p in _nopid_probs
+            ):
+                b = events.Jet.btagNoPIDParTAK4probb + events.Jet.btagNoPIDParTAK4probbb
+                c = events.Jet.btagNoPIDParTAK4probc + events.Jet.btagNoPIDParTAK4probcc
+                base_bvc = ak.where((b + c) <= 0.0, -1, b / (b + c))
+        if base_bvc is not None:
             jets = events.Jet
-            jets[bvc_name] = ak.where(
-                jets[cvb_name] < 0.0,
-                -1,
-                1.0 - jets[cvb_name],
-            )
+            jets[bvc_name] = base_bvc
             jets[f"{bvc_name}t"] = ak.where(
                 jets[bvc_name] < 0.0,
                 -1,
@@ -269,6 +288,58 @@ def missing_branch(events, campaign=None):
                 ]
                 events.Jet = update(events.Jet, update_map)
 
+        elif tagger == "NoPIDParTAK4":
+            if not hasattr(events.Jet, hfvlf_name) and all(
+                hasattr(events.Jet, p) for p in _nopid_probs
+            ):
+                jets = events.Jet
+                b = jets.btagNoPIDParTAK4probb + jets.btagNoPIDParTAK4probbb
+                c = jets.btagNoPIDParTAK4probc + jets.btagNoPIDParTAK4probcc
+                lf = (
+                    jets.btagNoPIDParTAK4probg
+                    + jets.btagNoPIDParTAK4probud
+                    + jets.btagNoPIDParTAK4probs
+                )
+                jets[hfvlf_name] = ak.where(
+                    (b + c + lf) <= 0.0, -1, (b + c) / (b + c + lf)
+                )
+                jets[f"{hfvlf_name}t"] = ak.where(
+                    jets[hfvlf_name] < 0.0,
+                    -1,
+                    1.0 - np.sqrt(1.0 - jets[hfvlf_name]),
+                )
+
+                for lo, hi in (
+                    (25.0, 35.0),
+                    (35.0, 50.0),
+                    (50.0, 70.0),
+                    (70.0, 90.0),
+                    (90.0, 120.0),
+                ):
+                    jets[f"{hfvlf_name}_pt{int(lo)}to{int(hi)}"] = ak.where(
+                        (jets.pt < lo) | (jets.pt >= hi),
+                        -2,
+                        jets[hfvlf_name],
+                    )
+                jets[f"{hfvlf_name}_pt120toinf"] = ak.where(
+                    jets.pt < 120.0,
+                    -2,
+                    jets[hfvlf_name],
+                )
+
+                update_map = {
+                    hfvlf_name: jets[hfvlf_name],
+                    f"{hfvlf_name}t": jets[f"{hfvlf_name}t"],
+                }
+                for lo, hi in ((25, 35), (35, 50), (50, 70), (70, 90), (90, 120)):
+                    update_map[f"{hfvlf_name}_pt{lo}to{hi}"] = jets[
+                        f"{hfvlf_name}_pt{lo}to{hi}"
+                    ]
+                update_map[f"{hfvlf_name}_pt120toinf"] = jets[
+                    f"{hfvlf_name}_pt120toinf"
+                ]
+                events.Jet = update(events.Jet, update_map)
+
         elif tagger in ("DeepFlav", "PNet"):
             if (
                 not hasattr(events.Jet, hfvlf_name)
@@ -330,6 +401,9 @@ def missing_branch(events, campaign=None):
             not hasattr(events.Jet, bin2d_name)
             and hasattr(events.Jet, hfvlf_name)
             and hasattr(events.Jet, bvc_name)
+            # 2D WP boundaries aren't calibrated for every tagger (e.g.
+            # NoPIDParTAK4 doesn't have any yet) -- skip rather than KeyError.
+            and tagger in btag_wp_dict.get(campaign, {})
         ):
             jets = events.Jet
             hfvlf = ak.flatten(jets[hfvlf_name])

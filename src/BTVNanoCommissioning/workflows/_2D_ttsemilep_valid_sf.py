@@ -134,7 +134,7 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Lepton cuts
         if self.selMod == "semittE_2D":
-            if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+            if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
                 event_iso_lep = events.Electron[
                     (events.Electron.pt > 32) & ele_promptmvaid(events, self._campaign)
                 ]
@@ -143,7 +143,7 @@ class NanoProcessor(processor.ProcessorABC):
                     (events.Electron.pt > 32) & ele_mvatightid(events, self._campaign)
                 ]
         elif self.selMod == "semittM_2D":
-            if self._campaign in ["Summer24", "Winter25", "Prompt25"]:  # NanoAODv15
+            if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
                 event_iso_lep = events.Muon[
                     (events.Muon.pt > 26) & mu_promptmvaid(events, self._campaign)
                 ]
@@ -191,7 +191,7 @@ class NanoProcessor(processor.ProcessorABC):
         # b-tagged jets requirement
         tagger = (
             "UParTAK4"
-            if self._campaign in ["Summer24", "Winter25", "Prompt25"]
+            if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
             else "PNet"
         )
         mask_bjets = btag_wp(event_jet, self._year, self._campaign, tagger, "b", "M")

@@ -85,14 +85,17 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
 
     # Reduce the jet to the correct dimension in the plot
     found4jets = False
+    found3jets = False
     found2jets = False
     for key in output.keys():
         if "jet3" in key:  # Because 0-indexing
             found4jets = True
             break
+        if "jet2" in key:  # Because 0-indexing
+            found3jets = True
         if "jet1" in key:  # Because 0-indexing
             found2jets = True
-    nj = 4 if found4jets else 2 if found2jets else 1
+    nj = 4 if found4jets else 3 if found3jets else 2 if found2jets else 1
     if nj != 1:
         pruned_ev["SelJet"] = pruned_ev.SelJet[:, :nj]
     if "var" in str(ak.type(pruned_ev.SelJet.pt)) and nj == 1:
@@ -287,12 +290,18 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
                     if f"jet{i}" not in histname:
                         continue
                     if nj == 1:
-                        sel_jet, flav, wgt = pruned_ev.SelJet, genflavor, weight
+                        sel_jet, flav, wgt, temp_syst = (
+                            pruned_ev.SelJet,
+                            genflavor,
+                            weight,
+                            syst,
+                        )
                     else:
                         mask_njets = ak.count(pruned_ev.SelJet.pt, axis=1) >= (i + 1)
                         temp_SelJet = pruned_ev.SelJet[mask_njets]
                         temp_genflavor = genflavor[mask_njets]
                         temp_weight = weight[mask_njets]
+                        temp_syst = syst[mask_njets]
                         sel_jet, flav, wgt = (
                             temp_SelJet[:, i],
                             temp_genflavor[:, i],
@@ -301,14 +310,14 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
                     if str(i) in histname:
                         if "dr_mujet" in histname:
                             h.fill(
-                                syst,
+                                temp_syst,
                                 flatten(flav),
                                 flatten(sel_jet.delta_r(pruned_ev.SelMuon)),
                                 weight=wgt,
                             )
                         else:
                             h.fill(
-                                syst,
+                                temp_syst,
                                 flatten(flav),
                                 flatten(sel_jet[histname.replace(f"jet{i}_", "")]),
                                 weight=wgt,
@@ -371,14 +380,26 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
                         if not histname.endswith(str(i)):
                             continue
                         if nj > 1:
-                            flav, seljet = flavs[:, i], seljets[:, i]
+                            # not every event has >=(i+1) jets (e.g. DY with
+                            # up to 3 jets stored, but not guaranteed 3/event)
+                            mask_njets = ak.count(seljets.pt, axis=1) >= (i + 1)
+                            temp_flavs = flavs[mask_njets]
+                            temp_seljets = seljets[mask_njets]
+                            temp_weight = weight[mask_njets]
+                            temp_syst = syst[mask_njets]
+                            flav, seljet, wgt, fsyst = (
+                                temp_flavs[:, i],
+                                temp_seljets[:, i],
+                                temp_weight,
+                                temp_syst,
+                            )
                         else:
-                            flav, seljet = flavs, seljets
+                            flav, seljet, wgt, fsyst = flavs, seljets, weight, syst
                         h.fill(
-                            syst=syst,
+                            syst=fsyst,
                             flav=flav,
                             discr=seljet[histname.replace(f"_{i}", "")],
-                            weight=weight,
+                            weight=wgt,
                         )
                 elif histname in seljets.fields:
                     # No jet index suffix (nj=1) - fill directly
@@ -397,17 +418,24 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
             output["dr_poslnegl"].fill(
                 syst, pruned_ev.posl.delta_r(pruned_ev.negl), weight=weight
             )
+            # SelJet may hold a variable number of jets/event (e.g. DY
+            # storing up to 3 jets), so the per-jet dr/flavor arrays are
+            # ragged and must be flattened before filling
+            dr_posl = pruned_ev.posl.delta_r(pruned_ev.SelJet)
+            flat_dr_posl = flatten(dr_posl)
             output["dr_posljet"].fill(
-                syst,
-                genflavor,
-                pruned_ev.posl.delta_r(pruned_ev.SelJet),
-                weight=weight,
+                np.full(len(flat_dr_posl), syst[0]),
+                flatten(genflavor),
+                flat_dr_posl,
+                weight=flatten(ak.broadcast_arrays(weight, dr_posl)[0]),
             )
+            dr_negl = pruned_ev.negl.delta_r(pruned_ev.SelJet)
+            flat_dr_negl = flatten(dr_negl)
             output["dr_negljet"].fill(
-                syst,
-                genflavor,
-                pruned_ev.negl.delta_r(pruned_ev.SelJet),
-                weight=weight,
+                np.full(len(flat_dr_negl), syst[0]),
+                flatten(genflavor),
+                flat_dr_negl,
+                weight=flatten(ak.broadcast_arrays(weight, dr_negl)[0]),
             )
 
         # Muon enriched jet histograms
@@ -488,11 +516,16 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
                 syst, flatten(pruned_ev.dilep.mass), weight=weight
             )
             if "dilep_ptratio" in output.keys():
+                # SelJet may hold a variable number of jets/event, so the
+                # per-jet ratio/flavor arrays are ragged and must be
+                # flattened (and syst/weight broadcast per-jet) before filling
+                ratio = pruned_ev.dilep.pt / pruned_ev.SelJet.pt
+                flat_ratio = flatten(ratio)
                 output["dilep_ptratio"].fill(
-                    syst,
-                    genflavor,
-                    flatten(pruned_ev.dilep.pt / pruned_ev.SelJet.pt),
-                    weight=weight,
+                    np.full(len(flat_ratio), syst[0]),
+                    flatten(genflavor),
+                    flat_ratio,
+                    weight=flatten(ak.broadcast_arrays(weight, ratio)[0]),
                 )
 
         if "MET_pt" in output.keys():

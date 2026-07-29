@@ -553,7 +553,7 @@ if __name__ == "__main__":
         from coffea.util import save
 
         empty_output = {}  # Minimal dict output
-        outname = os.path.join(args.outputdir, args.output)
+        outname = coffeaoutput
         os.makedirs(os.path.dirname(outname), exist_ok=True)
         save(empty_output, outname)
         print(f"Empty output file created successfully at {outname}")

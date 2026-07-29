@@ -11,6 +11,12 @@ import collections
 from pathlib import Path
 
 
+# Campaigns that aren't backed by their own CVMFS metadata directory and should
+# instead resolve to another campaign's corrections (e.g. a private NanoAOD
+# production reusing the same MiniAOD conditions as an official campaign).
+_CAMPAIGN_ALIASES = {"CustomSummer24": "Summer24"}
+
+
 def campaign_map():
     dirs = [
         Path("/cvmfs/cms-griddata.cern.ch/cat/metadata/JME/"),
@@ -34,6 +40,9 @@ def campaign_map():
             continue
         else:
             raise ValueError("Unknown campaign name")
+    for alias, target in _CAMPAIGN_ALIASES.items():
+        if target in dirnames:
+            dirnames[alias] = dirnames[target]
     return dirnames
 
 
@@ -230,6 +239,76 @@ def PFCand_link(events, event_level, jetindx):
             .pFCandsIdx
         ]
     return spfcands
+
+
+def _local_pick(arr, idx, default):
+    """Select arr[i][idx[i]] for each event i (idx may be a masked/padded
+    per-event scalar index), filling `default` where idx is out of range."""
+    mask = ak.local_index(arr) == idx[:, None]
+    return ak.fill_none(ak.firsts(arr[mask]), default)
+
+
+def SV_link_ragged(events, event_level, jetindx):
+    """Attach the primary secondary vertex (Jet_svIdx1) to a ragged
+    (variable jets/event) list of raw jet indices, e.g. a SelJet collection
+    with a variable number of jets per event capped at some maximum. Unlike
+    SV_link, this does not need a fixed per-event slot count and keeps the
+    output jagged (no padding), matching the shape of `jetindx` itself.
+    Jets with no matched SV (svIdx1 == -1) get -1.
+    """
+    jet = events[event_level].Jet
+    sv = events[event_level].SV
+    # pad SV collection with a dummy entry so index 0 is always valid, even
+    # for events with zero SVs (ak.where evaluates both branches eagerly)
+    nsv = ak.num(sv.mass, axis=1)
+    sv_mass = ak.fill_none(ak.pad_none(sv.mass, 1, axis=1), -1.0)
+    sv_dlensig = ak.fill_none(ak.pad_none(sv.dlenSig, 1, axis=1), -1.0)
+    svidx1 = jet.svIdx1[jetindx]
+    # Jet_svIdx1 can reference a secondary vertex that failed the SV
+    # collection's own selection cuts and is therefore missing from `SV`
+    # even though svIdx1 >= 0; guard against that out-of-range case too.
+    has_sv = (svidx1 >= 0) & (svidx1 < nsv[:, None])
+    safe_svidx = ak.where(has_sv, svidx1, 0)
+    mass = ak.where(has_sv, sv_mass[safe_svidx], -1.0)
+    dlensig = ak.where(has_sv, sv_dlensig[safe_svidx], -1.0)
+    return mass, dlensig
+
+
+def SV_link(events, event_level, jetindx):
+    """Attach the primary secondary vertex (Jet_svIdx1, an index into the
+    SV collection) to the given jet index/indices. Jets with no matched SV
+    (svIdx1 == -1), or jet slots with no jet at all (padded jetindx), get -1.
+    """
+    jet = events[event_level].Jet
+    sv = events[event_level].SV
+    nsv = ak.num(sv.mass, axis=1)
+
+    def sv_for(safe_jetidx, has_jet):
+        svidx1 = _local_pick(jet.svIdx1, safe_jetidx, -1)
+        # Jet_svIdx1 can reference a secondary vertex that failed the SV
+        # collection's own selection cuts and is therefore missing from `SV`
+        # even though svIdx1 >= 0; guard against that out-of-range case too.
+        has_sv = has_jet & (svidx1 >= 0) & (svidx1 < nsv)
+        safe_svidx = ak.where(has_sv, svidx1, 0)
+        mass = ak.where(has_sv, _local_pick(sv.mass, safe_svidx, -1.0), -1.0)
+        dlensig = ak.where(has_sv, _local_pick(sv.dlenSig, safe_svidx, -1.0), -1.0)
+        return mass, dlensig
+
+    if str(ak.type(jetindx)).count("*") > 1:
+        jetindx = jetindx[event_level]
+        svmass = collections.defaultdict(dict)
+        svd3dsig = collections.defaultdict(dict)
+        for i in range(len(jetindx[0])):
+            idx = jetindx[:, i]
+            has_jet = ~ak.is_none(idx)
+            safe_jetidx = ak.fill_none(idx, 0)
+            svmass[i], svd3dsig[i] = sv_for(safe_jetidx, has_jet)
+    else:
+        idx = jetindx[event_level]
+        has_jet = ~ak.is_none(idx)
+        safe_jetidx = ak.fill_none(idx, 0)
+        svmass, svd3dsig = sv_for(safe_jetidx, has_jet)
+    return svmass, svd3dsig
 
 
 def uproot_writeable(events, include=["events", "run", "luminosityBlock"]):

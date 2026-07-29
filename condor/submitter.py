@@ -5,6 +5,17 @@ import tarfile
 import argparse
 
 
+def _prompt_yn(prompt):
+    # Scripts (e.g. 02_run_workflows.sh) call this submitter multiple times
+    # in a row non-interactively; stdin has no input to give, so input()
+    # would raise EOFError. Match what happens if a human just hits enter --
+    # the prompts' bracketed "[y]" default -- instead of crashing.
+    try:
+        return input(prompt)
+    except EOFError:
+        return ""
+
+
 def make_tarfile(output_filename, source_dir, exclude_dirs=[]):
     with tarfile.open(output_filename, "w:gz") as tar:
         for root, dirs, files in os.walk(source_dir):
@@ -51,6 +62,11 @@ def get_condor_submitter_parser(parser):
         default="tomorrow",
         help="JobFlavour for condor@lxplus. E.g. microcentury, longlunch, workday, tomorrow",
     )
+    parser.add_argument(
+        "--accountingGroup",
+        default=None,
+        help="If specified, sets +AccountingGroup in the JDL (e.g. group_u_CMST3.all) for priority/quota purposes",
+    )
     return parser
 
 
@@ -91,6 +107,7 @@ def get_main_parser():
             "Summer23",
             "Summer23BPix",
             "Summer24",
+            "CustomSummer24",
             "Prompt25",
             "2018-UL",
             "2017-UL",
@@ -155,6 +172,11 @@ def get_main_parser():
         help="Number of events per process chunk",
     )
     parser.add_argument("--skipbadfiles", action="store_true", help="Skip bad files.")
+    parser.add_argument(
+        "--dryrun",
+        action="store_true",
+        help="Prepare the tarball, job directory, and submit.jdl but do not actually call condor_submit",
+    )
     parser = get_condor_submitter_parser(parser)
     return parser
 
@@ -185,7 +207,7 @@ if __name__ == "__main__":
 
         skip_tar = False
         if os.path.exists("BTVNanoCommissioning.tar.gz"):
-            user_input = input(
+            user_input = _prompt_yn(
                 "BTVNanoCommissioning.tar.gz already exists, skip the tarring? ([y]/n): "
             )
             if user_input.lower() != "n":
@@ -199,13 +221,17 @@ if __name__ == "__main__":
             make_tarfile(
                 "BTVNanoCommissioning.tar.gz",
                 base_dir,
-                exclude_dirs=["BTVNanoCommissioning.egg-info"] + jobdirs,
+                # "metadata" (repo root and SFbc-2D/) holds dataset file-list
+                # JSONs (100s of MB) that only fetch.py/submitter.py need --
+                # each job gets its own file list via split_samples.json instead.
+                exclude_dirs=["BTVNanoCommissioning.egg-info", "metadata"]
+                + jobdirs,
             )
 
     # Create job dir
     job_dir = f"jobs_{args.jobName}"
     if os.path.exists(job_dir):
-        user_input = input("Job directory already exists, overwrite? ([y]/n): ")
+        user_input = _prompt_yn("Job directory already exists, overwrite? ([y]/n): ")
         if user_input.lower() != "n":
             shutil.rmtree(job_dir)
         else:
@@ -274,6 +300,7 @@ request_cpus = {nCPU}
 use_x509userproxy = true
 
 +JobFlavour = "{jobqueue}"
+{accounting_group}
 
 Log        = {log_dir}/job.log_$(Cluster)
 Output     = {log_dir}/job.out_$(Cluster)-$(Process)
@@ -291,6 +318,11 @@ Queue JOBNUM from {jobnum_file}
 """.format(
         executable=f"{base_dir}/condor/execute.sh",
         jobqueue=args.jobqueue,
+        accounting_group=(
+            f'+AccountingGroup = "{args.accountingGroup}"'
+            if args.accountingGroup
+            else ""
+        ),
         log_dir=f"{base_dir}/{job_dir}/log",
         transfer_input_files=f"{base_dir}/{job_dir}/arguments.json,{base_dir}/{job_dir}/split_samples.json,{base_dir}/{job_dir}/jobnum_list.txt"
         + ("" if args.remoteRepo else f",{base_dir}/BTVNanoCommissioning.tar.gz"),
@@ -300,7 +332,10 @@ Queue JOBNUM from {jobnum_file}
     )
     with open(os.path.join(job_dir, "submit.jdl"), "w") as f:
         f.write(jdl_template)
-    os.system(f"condor_submit {job_dir}/submit.jdl")
-    # print(
-    #     f"Setup completed. Now submit the condor jobs by:\n  condor_submit {job_dir}/submit.jdl"
-    # )
+    print(f"{counter} jobs prepared in {job_dir}/submit.jdl")
+    if args.dryrun:
+        print(
+            f"Dry run: not submitting. To submit for real, run:\n  condor_submit {job_dir}/submit.jdl"
+        )
+    else:
+        os.system(f"condor_submit {job_dir}/submit.jdl")

@@ -538,14 +538,14 @@ correction_config = {
             "DC": "Cert_Collisions2024_378981_386951_Golden.json",
             "LUM": "puWeights_BCDEFGHI.json.gz",
             "JME": {
-                "MC": "Summer24Prompt24_V3 Summer24Prompt24_JRV1",
-                "Run2024C": "Summer24Prompt24_V3",
-                "Run2024D": "Summer24Prompt24_V3",
-                "Run2024E": "Summer24Prompt24_V3",
-                "Run2024F": "Summer24Prompt24_V3",
-                "Run2024G": "Summer24Prompt24_V3",
-                "Run2024H": "Summer24Prompt24_V3",
-                "Run2024I": "Summer24Prompt24_V3",
+                "MC": "Summer24Prompt24_V5 Summer24Prompt24_JRV2",
+                "Run2024C": "Summer24Prompt24_V5",
+                "Run2024D": "Summer24Prompt24_V5",
+                "Run2024E": "Summer24Prompt24_V5",
+                "Run2024F": "Summer24Prompt24_V5",
+                "Run2024G": "Summer24Prompt24_V5",
+                "Run2024H": "Summer24Prompt24_V5",
+                "Run2024I": "Summer24Prompt24_V5",
             },
             "jetveto": {"Summer24Prompt24_RunBCDEFGHI_V1": "jetvetomap"},
             # "MUO": {
@@ -792,3 +792,7 @@ correction_config = {
         "default": {"DC": "$PROMPT_DATAMC"},
     },
 }
+
+# CustomSummer24: private NanoAODv15 production (extra taggers, phys03/USER samples)
+# on top of the same Summer24 MiniAOD conditions -- reuse Summer24 corrections as-is.
+correction_config["CustomSummer24"] = correction_config["Summer24"]

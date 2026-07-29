@@ -8,7 +8,12 @@ from BTVNanoCommissioning.utils.correction import (
     common_shifts,
     reweighting,
 )
-from BTVNanoCommissioning.helpers.func import update, dump_lumi, PFCand_link
+from BTVNanoCommissioning.helpers.func import (
+    update,
+    dump_lumi,
+    PFCand_link,
+    SV_link_ragged,
+)
 from BTVNanoCommissioning.helpers.update_branch import missing_branch
 from BTVNanoCommissioning.utils.histogramming.histograms.qgtag import qg_writer
 from BTVNanoCommissioning.utils.histogramming.histogrammer import (
@@ -81,16 +86,23 @@ class NanoProcessor(processor.ProcessorABC):
             raise ValueError(self.selMod, "is not a valid selection modifier.")
 
         hists = ["common", "fourvec", "DY"]
+        obj_list = ["posl", "negl", "dilep", "jet0"]
+        njet_hist = 1
         if "2D" in self.selMod:
             hists.append("DY_2D")
+            # also histogram jet1, jet2 (with tagging categories) so they
+            # can be used as additional categories in the global SF fit
+            obj_list = obj_list + ["jet1", "jet2"]
+            njet_hist = 3
         output = {}
         if not self.noHist:
             if "QG" not in self.selMod:
                 output = histogrammer(
                     jet_fields=events.Jet.fields,
-                    obj_list=["posl", "negl", "dilep", "jet0"],
+                    obj_list=obj_list,
                     hist_collections=hists,
                     include_m=isMu,
+                    njet=njet_hist,
                 )
             else:
                 output = histogrammer(
@@ -142,6 +154,7 @@ class NanoProcessor(processor.ProcessorABC):
         # Muon cuts
         if "2D" in self.selMod and self._campaign in [
             "Summer24",
+            "CustomSummer24",
             "Winter25",
             "Prompt25",
         ]:  # NanoAODv15
@@ -156,6 +169,7 @@ class NanoProcessor(processor.ProcessorABC):
         # Electron cuts
         if "2D" in self.selMod and self._campaign in [
             "Summer24",
+            "CustomSummer24",
             "Winter25",
             "Prompt25",
         ]:  # NanoAODv15
@@ -232,6 +246,10 @@ class NanoProcessor(processor.ProcessorABC):
         jetindx = ak.pad_none(jetindx, 1)
         jetindx = jetindx[:, 0]
 
+        # raw jet index for the up-to-3 selected jets stored in SelJet (2D
+        # selMod); kept ragged (not padded) to match SelJet's own shape
+        jetindx3 = ak.local_index(events.Jet.pt)[jet_sel]
+
         selection = (
             req_lumi & req_trig & req_dilep & req_dilepmass & req_jets & req_metfilter
         )
@@ -295,7 +313,9 @@ class NanoProcessor(processor.ProcessorABC):
             pruned_ev["Tag", "phi"] = pruned_ev.Tag.phi
             pruned_ev["Tag", "mass"] = pruned_ev.Tag.mass
         else:
-            pruned_ev["SelJet"] = event_jet[event_level]
+            # keep up to 3 jets/event so jet1, jet2 (and their SV info) are
+            # stored alongside jet0, not just the leading jet
+            pruned_ev["SelJet"] = event_jet[event_level][:, :3]
 
         if isMu:
             pruned_ev["MuonPlus"] = sposmu
@@ -323,6 +343,25 @@ class NanoProcessor(processor.ProcessorABC):
         # Find the PFCands associate with selected jets. Search from jetindex->JetPFCands->PFCand
         if "PFCands" in events.fields and "QG" not in self.selMod:
             pruned_ev["PFCands"] = PFCand_link(events, event_level, jetindx)
+
+        # Match secondary vertices to each of the (up to 3) selected jets.
+        # Some private NanoAOD productions (e.g. CustomSummer24) keep the SV
+        # collection but drop the Jet->SV index link, so check for it too.
+        if (
+            "SV" in events.fields
+            and "svIdx1" in events.Jet.fields
+            and "QG" not in self.selMod
+        ):
+            svmass, svd3dsig = SV_link_ragged(
+                events, event_level, jetindx3[event_level][:, :3]
+            )
+            pruned_ev["SelJet", "svmass"] = svmass
+            pruned_ev["SelJet", "svd3dsig"] = svd3dsig
+
+        # position of each entry within the stored SelJet list itself (0 =
+        # leading, 1 = subleading, ...), not the original NanoAOD Jet index
+        if "QG" not in self.selMod:
+            pruned_ev["SelJet", "jetIdx"] = ak.local_index(pruned_ev.SelJet, axis=1)
 
         ####################
         #     Output       #
@@ -392,7 +431,8 @@ class NanoProcessor(processor.ProcessorABC):
                 systematics,
                 dataset,
                 isRealData,
-                schema="CFM",  # doOnly=["SelJet","njet","PuppiMET"]
+                schema="SLIM",  # doOnly=["SelJet","njet","PuppiMET"]
+                perJet=("QG" not in self.selMod),
             )
 
         return {dataset: output}

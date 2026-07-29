@@ -1,10 +1,24 @@
 from BTVNanoCommissioning.helpers.func import uproot_writeable
+from BTVNanoCommissioning.helpers.xsection import xsection
+from BTVNanoCommissioning.helpers.xsection_13TeV import xsection_13TeV
 import numpy as np
 import awkward as ak
 import os, uproot
 
+# b/c-tag SF names weight_manager() (correction.py) may add via btagSFs(); only one
+# is active at a time there, kept as a list so ftagWeight resolves to whichever is.
+_FTAG_SF_NAMES = ["UParTAK4BC", "PNetBC", "DeepJetC", "DeepJetB", "DeepCSVB", "DeepCSVC"]
+
+# Central weight branches array_writer() always computes (see below). Listed
+# explicitly here -- rather than relying on the "weight" substring match used for
+# other branches -- since "genWeight" collides with a native NanoAOD field name and
+# would otherwise be silently dropped by the setdiff1d-based default branch list.
+_WEIGHT_BRANCHES = ["genWeight", "ttbar_weight", "puwei", "muWeight", "eleWeight", "ftagWeight"]
+
 arraySchema = {
-    "CFM": [
+    "CFM": _WEIGHT_BRANCHES
+    + [
+        "xSecWeight",
         "SelJet_btag",
         "SelJet_pt",
         "SelJet_muEF",
@@ -29,6 +43,8 @@ arraySchema = {
         "SelJet_mass",
         "SelJet_hadronFlavour",
         "SelJet_partonFlavour",
+        "SelJet_svmass",
+        "SelJet_svd3dsig",
         "njet",
         "PuppiMET_pt",
         "PuppiMET_phi",
@@ -46,8 +62,66 @@ arraySchema = {
         "W_pt",
         "Pileup_nTrueInt",
         "Pileup_nPU",
-    ]
+    ],
+    # Minimal per-jet content shared by DY/Wc/ttdilep: kinematics, flavour,
+    # associated SV mass, the raw Jet-collection index (jetIdx, meaningless/absent
+    # for Wc where SelJet is the single muon-tagged jet, not a per-jet list), and
+    # only the inclusive HFvLF/BvC scores of the taggers built for this 2D method
+    # (PNet, UParTAK4, NoPIDParTAK4) -- not their pT-binned/2Dbin/t sub-variants.
+    "SLIM": _WEIGHT_BRANCHES
+    + [
+        "xSecWeight",
+        "njet",
+        "SelJet_pt",
+        "SelJet_eta",
+        "SelJet_phi",
+        "SelJet_mass",
+        "SelJet_hadronFlavour",
+        "SelJet_partonFlavour",
+        "SelJet_svmass",
+        "SelJet_jetIdx",
+        "SelJet_btagPNetHFvLF",
+        "SelJet_btagPNetBvC",
+        "SelJet_btagUParTAK4HFvLF",
+        "SelJet_btagUParTAK4BvC",
+        "SelJet_btagNoPIDParTAK4HFvLF",
+        "SelJet_btagNoPIDParTAK4BvC",
+    ],
 }
+
+
+def _flatten_to_perjet(ev, ref_collection):
+    """Flatten a per-event branch dict (as produced by uproot_writeable) to one row
+    per jet, using `ref_collection` (e.g. "SelJet") to determine jets/event.
+    If `ref_collection` is already one row per event (not jagged), `ev` is returned
+    unchanged since it's already effectively per-jet.
+    """
+    if ref_collection not in ev:
+        raise ValueError(
+            f"perJet=True requires '{ref_collection}' among the output branches"
+        )
+    ref = ev[ref_collection]
+    try:
+        ref_counts = ak.num(ref, axis=1)
+    except ValueError:
+        return ev
+
+    template = ref[ref.fields[0]]
+    out = {}
+    for name, arr in ev.items():
+        try:
+            arr_counts = ak.num(arr, axis=1)
+        except ValueError:
+            # scalar-per-event branch: repeat its value across each jet
+            broadcasted, _ = ak.broadcast_arrays(arr, template)
+            out[name] = ak.flatten(broadcasted, axis=1)
+            continue
+        if ak.all(arr_counts == ref_counts):
+            out[name] = ak.flatten(arr, axis=1)
+        # else: jagged with a per-event length unrelated to the jet
+        # collection (e.g. LHEReweightingWeight's own weight-variation
+        # count) -- cannot be represented in a one-row-per-jet tree, drop it
+    return out
 
 
 def array_writer(
@@ -98,18 +172,44 @@ def array_writer(
     schema=None,
     othersMC=["Pileup_nTrueInt", "Pileup_nPU"],  # other fields, for MC only
     empty=False,
+    perJet=False,  # write one row per jet instead of one row per event
+    perJet_collection="SelJet",  # jet collection used to determine jets/event
 ):
+    # Arrays are only written out for the nominal shift/weight: no
+    # per-systematic-variation branches, just the individual central weight
+    # components needed for realistic data/MC agreement.
+    if systname[0] != "nominal":
+        return
+
     if weights is not None:
-        pruned_event["weight"] = weights.weight()
-        for ind_wei in weights.weightStatistics.keys():
-            pruned_event[f"{ind_wei}_weight"] = weights.partial_weight(
-                include=[ind_wei]
+        added = set(weights.weightStatistics.keys())
+
+        def _partial(names):
+            names = [n for n in names if n in added]
+            if not names:
+                return np.ones(len(pruned_event))
+            return weights.partial_weight(include=names)
+
+        pruned_event["genWeight"] = _partial(["genweight"])
+        pruned_event["ttbar_weight"] = _partial(["ttbar_weight"])
+        pruned_event["puwei"] = _partial(["puweight"])
+        pruned_event["muWeight"] = _partial([n for n in added if n.startswith("mu_")])
+        pruned_event["eleWeight"] = _partial([n for n in added if n.startswith("ele_")])
+        pruned_event["ftagWeight"] = _partial(_FTAG_SF_NAMES)
+
+    if not isRealData:
+        xs_dict = {}
+        for obj in xsection + xsection_13TeV:
+            xs = float(obj["cross_section"])
+            if obj.get("kFactor"):
+                xs *= float(obj["kFactor"])
+            xs_dict[obj["process_name"]] = xs
+        if dataset in xs_dict:
+            pruned_event["xSecWeight"] = np.full(len(pruned_event), xs_dict[dataset])
+        else:
+            print(
+                f"WARNING: '{dataset}' not found in xsection database, xSecWeight not written"
             )
-        if len(systname) > 1:
-            for syst in systname:
-                if syst == "nominal":
-                    continue
-                pruned_event[f"weight_syst_{syst}"] = weights.weight(modifier=syst)
 
     if empty:
         print("WARNING: No events selected. Writing blank file.")
@@ -123,6 +223,22 @@ def array_writer(
     elif schema is not None:
         netout = arraySchema[schema] + [b for b in pruned_event.fields if "weight" in b]
         out_branch = np.array(netout)
+        # uproot_writeable (helpers/func.py) matches sub-field names by substring,
+        # so an untrimmed SelJet record leaks related NanoAOD fields even for an
+        # exact-looking token (e.g. "pt" also matches "pt_raw"/"Genpt", and
+        # "btagUParTAK4BvC" also matches its own pT-binned sub-variants). Trim
+        # SelJet to exactly the requested sub-fields first so there's nothing
+        # extra left for it to match.
+        if "SelJet" in pruned_event.fields and pruned_event["SelJet"].fields:
+            wanted = [
+                b[len("SelJet_") :]
+                for b in out_branch
+                if b.startswith("SelJet_")
+                and b[len("SelJet_") :] in pruned_event["SelJet"].fields
+            ]
+            pruned_event["SelJet"] = ak.zip(
+                {f: pruned_event["SelJet"][f] for f in wanted}
+            )
     else:
         # Get only the variables that were added newly
         out_branch = np.setdiff1d(
@@ -146,9 +262,13 @@ def array_writer(
 
         # Handle data vars
         out_branch = np.append(out_branch, othersData)
+        # Weight branches: added explicitly since "genWeight" collides with a
+        # native NanoAOD field name and would be missed by the setdiff1d above
+        out_branch = np.append(out_branch, _WEIGHT_BRANCHES)
 
         if not isRealData:
             out_branch = np.append(out_branch, othersMC)
+            out_branch = np.append(out_branch, ["xSecWeight"])
 
     # Write to root files
     print("Branches to write:", out_branch)
@@ -159,9 +279,18 @@ def array_writer(
         f"{outdir}/{nano_event.metadata['filename'].split('/')[-1].replace('.root','')}_{int(nano_event.metadata['entrystop']/processor_class.chunksize)}.root"
     ) as fout:
         if not empty:
-            fout["Events"] = uproot_writeable(pruned_event, include=out_branch)
+            events_out = uproot_writeable(pruned_event, include=out_branch)
+            if perJet:
+                events_out = _flatten_to_perjet(events_out, perJet_collection)
+            fout["Events"] = events_out
         fout["TotalEventCount"] = ak.Array(
-            [nano_event.metadata["entrystop"] - nano_event.metadata["entrystart"]]
+            {
+                "TotalEventCount": [
+                    nano_event.metadata["entrystop"] - nano_event.metadata["entrystart"]
+                ]
+            }
         )
         if not isRealData:
-            fout["TotalEventWeight"] = ak.Array([ak.sum(nano_event.genWeight)])
+            fout["TotalEventWeight"] = ak.Array(
+                {"TotalEventWeight": [ak.sum(nano_event.genWeight)]}
+            )

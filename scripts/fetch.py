@@ -111,6 +111,14 @@ parser.add_argument(
     required=True,
     type=str,
 )
+parser.add_argument(
+    "--DAS_instance",
+    help="DBS instance to search for --from_workflow/--from_dataset lookups, "
+    "e.g. 'prod/phys03' for private/USER productions. Also switches the data "
+    "tier searched to USER instead of NANOAOD*. Default: prod/global.",
+    default="prod/global",
+    type=str,
+)
 parser.add_argument("--year", help="year", default=None, type=str)
 
 parser.add_argument(
@@ -1288,13 +1296,17 @@ def getFilesFromDas(args):
 
             # Extract primary dataset name
             primary_name = dataset.split("/")[1]
-            # More precise check for data: should contain "/Run20XX" pattern
-            # Data pattern: /MuonEG/Run2024G-MINIv6NANOv15-v3/NANOAOD
-            data_run_pattern = re.search(r"/Run20\d\d[A-Z]", dataset)
+            # More precise check for data: should contain a "Run20XX<era>" pattern.
+            # Central data: /MuonEG/Run2024G-MINIv6NANOv15-v3/NANOAOD (preceded by "/")
+            # Private phys03/USER production tuples embed it mid-string instead, e.g.
+            # /EGamma0/CustomNanoAODv15-..._Run2024C-MINIv6NANOv15-v1-.../USER
+            # (preceded by "_"), so match either separator and pull the run period
+            # directly instead of relying on a fixed split position.
+            data_run_pattern = re.search(r"[/_](Run20\d\d[A-Z])", dataset)
 
             if data_run_pattern:
                 # This is actual data with a real run period
-                run_period = dataset.split("/")[2].split("-")[0]  # Gets 'Run2024X'
+                run_period = data_run_pattern.group(1)  # Gets 'Run2024X'
                 dsname = f"{primary_name}{run_period}"
             else:
                 # This is MC - use only the primary dataset name
@@ -1803,8 +1815,15 @@ def direct_das_query(dataset_name, campaign_pattern):
     # Remove extra asterisks which cause problems
     clean_pattern = campaign_pattern.replace("**", "*")
 
+    # Private productions (e.g. a custom NanoAOD re-tuple of an official campaign)
+    # aren't published to prod/global as NANOAOD* -- they live in prod/phys03 as
+    # /USER datasets instead. --DAS_instance switches both the DBS instance and
+    # the data tier searched; central campaigns are unaffected (default unchanged).
+    instance = getattr(args, "DAS_instance", None) or "prod/global"
+    tier = "USER" if instance == "prod/phys03" else "NANOAOD*"
+
     # Build query for dataset discovery
-    query = f"dataset=/{dataset_name}/*{clean_pattern}*/NANOAOD*"
+    query = f"dataset=/{dataset_name}/*{clean_pattern}*/{tier}"
 
     if args.verbose:
         print(f"Executing direct DAS query: {query}")
@@ -1816,7 +1835,7 @@ def direct_das_query(dataset_name, campaign_pattern):
 
         if not in_ci:
             # For local environment - use direct dasgoclient call
-            cmd = f'dasgoclient -query="instance=prod/global {query}"'
+            cmd = f'dasgoclient -query="instance={instance} {query}"'
 
             if args.verbose:
                 print(f"Local command: {cmd}")
@@ -1825,7 +1844,7 @@ def direct_das_query(dataset_name, campaign_pattern):
         else:
             # For CI environment - use the two-step approach
             # First query without wildcards in the campaign pattern
-            basic_query = f'/cms.cern.ch/common/dasgoclient -query="dataset=/{dataset_name}/*{clean_pattern}*/NANOAOD* instance=prod/global"'
+            basic_query = f'/cms.cern.ch/common/dasgoclient -query="dataset=/{dataset_name}/*{clean_pattern}*/{tier} instance={instance}"'
             print(f"CI basic query: {basic_query}")
 
             # Use the existing run_das_command function
