@@ -24,6 +24,17 @@ def make_tarfile(output_filename, source_dir, exclude_dirs=[]):
             ]  # Exclude specified directories
             for file in files:
                 file_path = os.path.join(root, file)
+                # Never nest the sandbox tarball inside itself: skip the file we
+                # are writing plus any stale copy at the top of source_dir.
+                # Matched by exact path, not a "*.tar.gz" glob -- that would
+                # also drop the JME Summer23/23BPix payloads under data/.
+                if os.path.abspath(file_path) in (
+                    os.path.abspath(output_filename),
+                    os.path.abspath(
+                        os.path.join(source_dir, "BTVNanoCommissioning.tar.gz")
+                    ),
+                ):
+                    continue
                 tar.add(file_path, arcname=os.path.relpath(file_path, source_dir))
 
 
@@ -187,6 +198,18 @@ if __name__ == "__main__":
     print("Running with the following options:")
     print(args)
 
+    # execute.sh only transfers the .success marker back via HTCondor -- the
+    # actual histograms/arrays are cp/xrdcp'd directly from the worker node
+    # to outputDir. A relative (or otherwise non-shared) outputDir silently
+    # writes into the worker's ephemeral scratch space and is lost for good.
+    if not (args.outputDir.startswith("/") or args.outputDir.startswith("root://")):
+        print(
+            f"ERROR: --outputDir '{args.outputDir}' is not an absolute path or "
+            "root:// URL. Jobs would write their output to worker-node-local "
+            "scratch space and it would never reach you."
+        )
+        sys.exit(1)
+
     uid = os.getuid()
     homedir = os.getenv("HOME")
     expected_value = f"{homedir}/x509up_u{uid}"
@@ -224,7 +247,19 @@ if __name__ == "__main__":
                 # "metadata" (repo root and SFbc-2D/) holds dataset file-list
                 # JSONs (100s of MB) that only fetch.py/submitter.py need --
                 # each job gets its own file list via split_samples.json instead.
-                exclude_dirs=["BTVNanoCommissioning.egg-info", "metadata"]
+                # .git alone is ~666 MB; SFbc-2D/docs/notebooks/testfile are
+                # analysis-side and never read by the job. Dropping these takes
+                # the sandbox from 588 MB to ~38 MB per job.
+                exclude_dirs=[
+                    "BTVNanoCommissioning.egg-info",
+                    "metadata",
+                    ".git",
+                    "SFbc-2D",
+                    "docs",
+                    "notebooks",
+                    "testfile",
+                    "__pycache__",
+                ]
                 + jobdirs,
             )
 
@@ -290,13 +325,15 @@ if __name__ == "__main__":
         f.write("\n".join([str(i) for i in range(counter)]))
 
     ## store the jdl file
+    max_retries = 10
     jdl_template = """Universe   = vanilla
 Executable = {executable}
 
 
 Arguments = $(JOBNUM) $(request_cpus)
 
-request_cpus = {nCPU}
+request_cpus   = {nCPU}
+request_memory = {request_memory}
 use_x509userproxy = true
 
 +JobFlavour = "{jobqueue}"
@@ -306,8 +343,12 @@ Log        = {log_dir}/job.log_$(Cluster)
 Output     = {log_dir}/job.out_$(Cluster)-$(Process)
 Error      = {log_dir}/job.err_$(Cluster)-$(Process)
 
-max_retries             = 10
-periodic_release        = True
+max_retries             = {max_retries}
+# Only release a held job (e.g. after a transient output-transfer failure) a
+# bounded number of times, and not immediately -- otherwise a job stuck in a
+# hold/release loop (for a reason max_retries can't see, since that only
+# counts non-zero exits) retries forever instead of surfacing as held.
+periodic_release        = (NumJobStarts < {max_retries}) && ((time() - EnteredCurrentStatus) > 600)
 should_transfer_files   = YES
 when_to_transfer_output = ON_EXIT_OR_EVICT
 transfer_input_files    = {transfer_input_files}
@@ -318,6 +359,8 @@ Queue JOBNUM from {jobnum_file}
 """.format(
         executable=f"{base_dir}/condor/execute.sh",
         jobqueue=args.jobqueue,
+        max_retries=max_retries,
+        request_memory=f"{args.nCPU * 3}GB",
         accounting_group=(
             f'+AccountingGroup = "{args.accountingGroup}"'
             if args.accountingGroup

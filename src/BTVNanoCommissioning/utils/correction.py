@@ -1077,11 +1077,12 @@ def JME_shifts(
             else:
                 nocorrjet["muonSubtrDeltaEta"] = ak.zeros_like(nocorrjet.pt)
             if not isRealData:
-                genjetidx = ak.where(
-                    events.Jet.genJetIdx == -1, 0, events.Jet.genJetIdx
+                invalid_genjetidx = (events.Jet.genJetIdx == -1) | (
+                    events.Jet.genJetIdx >= ak.num(events.GenJet)
                 )
+                genjetidx = ak.where(invalid_genjetidx, 0, events.Jet.genJetIdx)
                 nocorrjet["Genpt"] = ak.where(
-                    events.Jet.genJetIdx == -1, -1, events.GenJet[genjetidx].pt
+                    invalid_genjetidx, -1, events.GenJet[genjetidx].pt
                 )
             nocorrjet["rho"] = ak.broadcast_arrays(
                 events.fixedGridRhoFastjetAll, nocorrjet.pt
@@ -3246,19 +3247,12 @@ def add_pdf_weight(weights, pdf_weights, isSyst=False):
             # NNPDF31_nnlo_as_0118_mc_hessian_pdfas
             # https://lhapdfsets.web.cern.ch/current/NNPDF31_nnlo_as_0118_mc_hessian_pdfas/NNPDF31_nnlo_as_0118_mc_hessian_pdfas.info
 
-            pdf_unc = np.zeros_like(weights.weight(), dtype=np.float64)
-            pdfas_unc = np.zeros_like(weights.weight(), dtype=np.float64)
-            for iPDF in range(1, 103):
-                if iPDF < 101:
-                    pdf_unc = (
-                        pdf_unc
-                        + (pdf_weights[:, iPDF] / pdf_weights[:, 0] - 1.0) ** 2.0
-                    )
-                pdfas_unc = (
-                    pdf_unc + (pdf_weights[:, iPDF] / pdf_weights[:, 0] - 1.0) ** 2.0
-                )
-            pdf_unc = np.sqrt(pdf_unc)
-            pdfas_unc = np.sqrt(pdfas_unc)
+            # Vectorised equivalent of the per-member loop over iPDF 1..102:
+            # pdf_unc sums members 1..100, pdfas_unc adds member 102 on top.
+            w = ak.to_numpy(pdf_weights).astype(np.float64)
+            rel = w[:, 1:101] / w[:, 0:1] - 1.0
+            pdf_unc = np.sqrt(np.sum(rel * rel, axis=1))
+            pdfas_unc = np.sqrt(pdf_unc**2.0 + (w[:, 102] / w[:, 0] - 1.0) ** 2.0)
             as_unc_up = pdf_weights[:, 101]
             as_unc_down = pdf_weights[:, 102]
 
@@ -4284,29 +4278,15 @@ def reweighting(events, isSyst):
                     PDFaS_genWeightDown = 1.0 / (nom + pdfas_unc) * genWeight
 
                 elif "325300 - 325402" in events.LHEPdfWeight.__doc__:  # Run 3 5FS
-                    pdf_unc = np.zeros_like(genWeight, dtype=np.float64)
-                    pdfas_unc = np.zeros_like(genWeight, dtype=np.float64)
-                    for iPDF in range(1, 103):
-                        if iPDF < 101:
-                            pdf_unc = (
-                                pdf_unc
-                                + (
-                                    events.LHEPdfWeight[:, iPDF]
-                                    / events.LHEPdfWeight[:, 0]
-                                    - 1.0
-                                )
-                                ** 2.0
-                            )
-                        pdfas_unc = (
-                            pdf_unc
-                            + (
-                                events.LHEPdfWeight[:, iPDF] / events.LHEPdfWeight[:, 0]
-                                - 1.0
-                            )
-                            ** 2.0
-                        )
-                    pdf_unc = np.sqrt(pdf_unc)
-                    pdfas_unc = np.sqrt(pdfas_unc)
+                    # Vectorised equivalent of the per-member loop over iPDF
+                    # 1..102: pdf_unc sums members 1..100, pdfas_unc adds
+                    # member 102 on top.
+                    w = ak.to_numpy(events.LHEPdfWeight).astype(np.float64)
+                    rel = w[:, 1:101] / w[:, 0:1] - 1.0
+                    pdf_unc = np.sqrt(np.sum(rel * rel, axis=1))
+                    pdfas_unc = np.sqrt(
+                        pdf_unc**2.0 + (w[:, 102] / w[:, 0] - 1.0) ** 2.0
+                    )
                     as_unc_up = events.LHEPdfWeight[:, 101]
                     as_unc_down = events.LHEPdfWeight[:, 102]
                     PDF_genWeightUp = (nom + pdf_unc) * genWeight
