@@ -3,6 +3,32 @@ from BTVNanoCommissioning.utils.selection import btag_wp_dict
 import numpy as np
 import awkward as ak
 
+_BTAG_2D_MAPPING_CACHE = {}
+
+
+def _get_2d_mapping_array(campaign, tagger):
+    """Convert btag_wp_dict[campaign][tagger]["2D"]["mapping"] (a static dict-of-dicts,
+    keyed by the 1-based np.digitize bin indices) into a padded numpy 2D array once, and
+    cache it. Row/column 0 and the last row/column (beyond the mapping's max key) are
+    filled with -1 so any in-range np.digitize output -- including the out-of-bin values
+    produced by the -1 sentinel or an overflow value -- can be used directly as an index
+    without raising.
+    """
+    cache_key = (campaign, tagger)
+    if cache_key in _BTAG_2D_MAPPING_CACHE:
+        return _BTAG_2D_MAPPING_CACHE[cache_key]
+
+    mapping_dict = btag_wp_dict[campaign][tagger]["2D"]["mapping"]
+    max_i = max(mapping_dict)
+    max_j = max(max(row) for row in mapping_dict.values())
+    mapping_arr = np.full((max_i + 2, max_j + 2), -1, dtype=np.int64)
+    for i, row in mapping_dict.items():
+        for j, val in row.items():
+            mapping_arr[i, j] = val
+
+    _BTAG_2D_MAPPING_CACHE[cache_key] = mapping_arr
+    return mapping_arr
+
 
 def missing_branch(events, campaign=None):
     """
@@ -413,19 +439,12 @@ def missing_branch(events, campaign=None):
             ihfvlf = np.digitize(hfvlf, btag_wp_dict[campaign][tagger]["2D"]["HFvLF"])
             ibvc = np.digitize(bvc, btag_wp_dict[campaign][tagger]["2D"]["BvC"])
 
-            jets[bin2d_name] = ak.unflatten(
-                [
-                    (
-                        -1
-                        if hfvlf[i] == -1
-                        else btag_wp_dict[campaign][tagger]["2D"]["mapping"][ihfvlf[i]][
-                            ibvc[i]
-                        ]
-                    )
-                    for i in range(len(ihfvlf))
-                ],
-                nj,
-            )
+            mapping_arr = _get_2d_mapping_array(campaign, tagger)
+            ihfvlf_idx = np.clip(ihfvlf, 0, mapping_arr.shape[0] - 1)
+            ibvc_idx = np.clip(ibvc, 0, mapping_arr.shape[1] - 1)
+            bin2d_vals = np.where(hfvlf == -1, -1, mapping_arr[ihfvlf_idx, ibvc_idx])
+
+            jets[bin2d_name] = ak.unflatten(bin2d_vals, nj)
 
             for lo, hi in (
                 (25.0, 35.0),

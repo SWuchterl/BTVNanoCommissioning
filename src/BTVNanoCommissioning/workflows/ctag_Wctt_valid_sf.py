@@ -469,6 +469,9 @@ class NanoProcessor(processor.ProcessorABC):
             "DeepJetB",
             "DeepJetC",
         ]  # exclude b-tag SFs for btag inputs
+        # exclude_btv is fixed, so this partial weight is identical on every
+        # iteration of the loop below -- compute it once rather than 4x per syst.
+        weight_noBTV = weights.partial_weight(exclude=exclude_btv)
         ####################
         #  Fill histogram  #
         ####################
@@ -494,9 +497,7 @@ class NanoProcessor(processor.ProcessorABC):
                         flatten(ak.broadcast_arrays(osss, sjets["pt"])[0]),
                         flatten(sjets[histname]),
                         weight=flatten(
-                            ak.broadcast_arrays(
-                                weights.partial_weight(exclude=exclude_btv), sjets["pt"]
-                            )[0]
+                            ak.broadcast_arrays(weight_noBTV, sjets["pt"])[0]
                         ),
                     )
                 elif (
@@ -510,10 +511,7 @@ class NanoProcessor(processor.ProcessorABC):
                         flatten(ak.broadcast_arrays(osss, spfcands["pt"])[0]),
                         flatten(spfcands[histname.replace("PFCands_", "")]),
                         weight=flatten(
-                            ak.broadcast_arrays(
-                                weights.partial_weight(exclude=exclude_btv),
-                                spfcands["pt"],
-                            )[0]
+                            ak.broadcast_arrays(weight_noBTV, spfcands["pt"])[0]
                         ),
                     )
                 elif "jet_" in histname and "mu" not in histname:
@@ -571,7 +569,7 @@ class NanoProcessor(processor.ProcessorABC):
                                 -0.2,
                                 smuon_jet[histname.replace(f"_{i}", "")],
                             ),
-                            weight=weights.partial_weight(exclude=exclude_btv),
+                            weight=weight_noBTV,
                         )
                         if not isRealData and "btag" in self.SF_map.keys():
                             h.fill(
@@ -595,7 +593,7 @@ class NanoProcessor(processor.ProcessorABC):
                             flav=smflav,
                             osss=osss,
                             discr=1.0 / np.tanh(smuon_jet[histname]),
-                            weight=weights.partial_weight(exclude=exclude_btv),
+                            weight=weight_noBTV,
                         )
 
             output["njet"].fill(syst, osss, njet, weight=weight)

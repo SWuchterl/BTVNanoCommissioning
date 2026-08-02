@@ -851,11 +851,7 @@ def _resolve_jecname(correct_map, jecname):
 
 
 def fixPhiRange(phi):
-    if phi < -np.pi:
-        phi = phi + 2.0 * np.pi
-    if phi > np.pi:
-        phi = phi - 2.0 * np.pi
-    return phi
+    return np.mod(phi + np.pi, 2 * np.pi) - np.pi
 
 
 def calc_T1_MET(
@@ -909,7 +905,7 @@ def calc_T1_MET(
     MET_y = MET_y_baseline - ak.sum(MET_y_shifts, axis=-1)
     pt_miss_final = np.sqrt(MET_x * MET_x + MET_y * MET_y)
     phi_miss_final = np.arctan2(MET_y, MET_x)
-    phi_miss_final = ak.Array([fixPhiRange(_phi) for _phi in phi_miss_final])
+    phi_miss_final = fixPhiRange(phi_miss_final)
 
     if systematic:
         if hasattr(met_nano, "ptUnclusteredUp"):
@@ -938,12 +934,8 @@ def calc_T1_MET(
             )
             pt_unclustered_down = np.sqrt((MET_x + dx_dn) ** 2 + (MET_y + dy_dn) ** 2)
             phi_unclustered_down = np.arctan2(MET_y + dy_dn, MET_x + dx_dn)
-            phi_unclustered_up = ak.Array(
-                [fixPhiRange(_phi) for _phi in phi_unclustered_up]
-            )
-            phi_unclustered_down = ak.Array(
-                [fixPhiRange(_phi) for _phi in phi_unclustered_down]
-            )
+            phi_unclustered_up = fixPhiRange(phi_unclustered_up)
+            phi_unclustered_down = fixPhiRange(phi_unclustered_down)
         elif hasattr(met_nano, "MetUnclustEnUpDeltaX"):
             # NanoAODv12+: directional x/y shifts for unclustered energy
             dx = met_nano.MetUnclustEnUpDeltaX
@@ -952,12 +944,8 @@ def calc_T1_MET(
             pt_unclustered_down = np.sqrt((MET_x - dx) ** 2 + (MET_y - dy) ** 2)
             phi_unclustered_up = np.arctan2(MET_y + dy, MET_x + dx)
             phi_unclustered_down = np.arctan2(MET_y - dy, MET_x - dx)
-            phi_unclustered_up = ak.Array(
-                [fixPhiRange(_phi) for _phi in phi_unclustered_up]
-            )
-            phi_unclustered_down = ak.Array(
-                [fixPhiRange(_phi) for _phi in phi_unclustered_down]
-            )
+            phi_unclustered_up = fixPhiRange(phi_unclustered_up)
+            phi_unclustered_down = fixPhiRange(phi_unclustered_down)
         else:
             # Fallback: isotropic approximation from sumPtUnclustered
             delta = np.sqrt(met_nano.sumPtUnclustered)
@@ -965,12 +953,8 @@ def calc_T1_MET(
             pt_unclustered_down = np.sqrt((MET_x - delta) ** 2 + (MET_y - delta) ** 2)
             phi_unclustered_up = np.arctan2(MET_y + delta, MET_x + delta)
             phi_unclustered_down = np.arctan2(MET_y - delta, MET_x - delta)
-            phi_unclustered_up = ak.Array(
-                [fixPhiRange(_phi) for _phi in phi_unclustered_up]
-            )
-            phi_unclustered_down = ak.Array(
-                [fixPhiRange(_phi) for _phi in phi_unclustered_down]
-            )
+            phi_unclustered_up = fixPhiRange(phi_unclustered_up)
+            phi_unclustered_down = fixPhiRange(phi_unclustered_down)
         return (
             pt_miss_final,
             phi_miss_final,
