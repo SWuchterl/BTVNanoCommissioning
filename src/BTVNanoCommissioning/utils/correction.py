@@ -2450,222 +2450,105 @@ def btagSFs(event, correct_map, weights, SFtype, syst=False):
             "lfstats1",
             "lfstats2",
         ]
-    sfs_up_all, sfs_down_all = {}, {}
+    # SelJet is jagged/unpadded (jet counts vary event-to-event within a chunk), so the SF
+    # is evaluated once on the fully-flattened jet array per systematic variation (not per
+    # jet "slot" bounded by the first event's jet count) and reduced back to a per-event
+    # value via unflatten + product across that event's jets.
+    #
+    # masknone/fill_none note: the None-handling in the pre-flatten version of this function
+    # existed to guard against the artificial None padding produced by per-slot slicing
+    # (`alljet[:, nj]`) past an event's real jet count -- that padding no longer exists once
+    # the jets are flattened, since every entry of flat_jet is a real jet (SelJet is built by
+    # direct boolean/index selection, not ak.pad_none, and btagSFs is only ever called when
+    # "hadronFlavour" is present, i.e. MC jets, where these fields are always filled). The
+    # ak.fill_none calls are kept (harmless/cheap) as a defensive no-op; the np.where(masknone, ...)
+    # wrapper is dropped since it was purely compensating for slot-padding.
     alljet = jet if jet.ndim > 1 else ak.singletons(jet)
-    for i, sys in enumerate(systlist):
-        sfs, sfs_down, sfs_up = (
-            np.ones_like(alljet[:, 0].pt),
-            np.ones_like(alljet[:, 0].pt),
-            np.ones_like(alljet[:, 0].pt),
-        )
-        for nj in range(ak.num(alljet.pt)[0]):
-            jet = alljet[:, nj]
-            masknone = ak.is_none(jet.pt)
-            jet.hadronFlavour = ak.fill_none(jet.hadronFlavour, 0)
-            if "ctag" in correct_map.keys() and "correctionlib" in str(
-                type(correct_map["ctag"])
-            ):
-                if SFtype == "DeepJetC":
-                    jet.btagDeepFlavCvL = ak.fill_none(jet.btagDeepFlavCvL, 0.0)
-                    jet.btagDeepFlavCvB = ak.fill_none(jet.btagDeepFlavCvB, 0.0)
-                    tmp_sfs = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["ctag"]["deepJet_shape"].evaluate(
-                            "central",
-                            jet.hadronFlavour,
-                            jet.btagDeepFlavCvL,
-                            jet.btagDeepFlavCvB,
-                        ),
-                    )
-                    if syst:
-                        tmp_sfs_up = np.where(
-                            masknone,
-                            1.0,
-                            correct_map["ctag"]["deepJet_shape"].evaluate(
-                                f"up_{systlist[i]}",
-                                jet.hadronFlavour,
-                                jet.btagDeepFlavCvL,
-                                jet.btagDeepFlavCvB,
-                            ),
-                        )
-                        tmp_sfs_down = np.where(
-                            masknone,
-                            1.0,
-                            correct_map["ctag"]["deepJet_shape"].evaluate(
-                                f"down_{systlist[i]}",
-                                jet.hadronFlavour,
-                                jet.btagDeepFlavCvL,
-                                jet.btagDeepFlavCvB,
-                            ),
-                        )
-                elif SFtype == "DeepCSVC":
-                    jet.btagDeepCvL = ak.fill_none(jet.btagDeepCvL, 0.0)
-                    jet.btagDeepCvB = ak.fill_none(jet.btagDeepCvB, 0.0)
-                    tmp_sfs = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["ctag"]["deepCSV_shape"].evaluate(
-                            "central",
-                            jet.hadronFlavour,
-                            jet.btagDeepCvL,
-                            jet.btagDeepCvB,
-                        ),
-                    )
-                    tmp_sfs_up = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["ctag"]["deepCSV_shape"].evaluate(
-                            f"up_{systlist[i]}",
-                            jet.hadronFlavour,
-                            jet.btagDeepCvL,
-                            jet.btagDeepCvB,
-                        ),
-                    )
-                    tmp_sfs_down = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["ctag"]["deepCSV_shape"].evaluate(
-                            f"down_{systlist[i]}",
-                            jet.hadronFlavour,
-                            jet.btagDeepCvL,
-                            jet.btagDeepCvB,
-                        ),
-                    )
-                elif SFtype == "UParTAK4BC" or SFtype == "PNetBC":
-                    if SFtype == "UParTAK4BC":
-                        jet_2Dbin = ak.fill_none(jet.btagUParTAK42Dbin, 0)
-                    elif SFtype == "PNetBC":
-                        jet_2Dbin = ak.fill_none(jet.btagPNet2Dbin, 0)
-                    jet_eta = ak.fill_none(jet.eta, 0)
-                    jet_pt = ak.fill_none(jet.pt, 0)
-                    if SFtype == "PNetBC":
-                        jet_2Dbin = ak.where(jet_2Dbin == -1, 0, jet_2Dbin)
-                        masknone = masknone | (jet_2Dbin == -1)
-                    tmp_sfs = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["ctag"]["UParTAK4_pseudocontinuous"].evaluate(
-                            "central",
-                            jet.hadronFlavour,
-                            jet.btagUParTAK42Dbin,
-                            jet_eta,
-                            jet_pt,
-                        ),
-                    )
-                    if syst:
-                        tmp_sfs_up = np.where(
-                            masknone,
-                            1.0,
-                            correct_map["ctag"]["UParTAK4_pseudocontinuous"].evaluate(
-                                f"up_{systlist[i]}",
-                                jet.hadronFlavour,
-                                jet.btagUParTAK42Dbin,
-                                jet_eta,
-                                jet_pt,
-                            ),
-                        )
-                        tmp_sfs_down = np.where(
-                            masknone,
-                            1.0,
-                            correct_map["ctag"]["UParTAK4_pseudocontinuous"].evaluate(
-                                f"down_{systlist[i]}",
-                                jet.hadronFlavour,
-                                jet.btagUParTAK42Dbin,
-                                jet_eta,
-                                jet_pt,
-                            ),
-                        )
-            elif "btag" in correct_map.keys() and "correctionlib" in str(
-                type(correct_map["btag"])
-            ):
-                if SFtype == "DeepJetB":
-                    jet.btagDeepFlavCvL = ak.fill_none(jet.btagDeepFlavCvL, 0.0)
-                    jet.btagDeepFlavCvB = ak.fill_none(jet.btagDeepFlavCvB, 0.0)
-                    tmp_sfs = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["btag"]["deepJet_shape"].evaluate(
-                            "central",
-                            jet.hadronFlavour,
-                            jet.btagDeepFlavCvL,
-                            jet.btagDeepFlavCvB,
-                        ),
-                    )
-                    if syst:
-                        tmp_sfs_up = np.where(
-                            masknone,
-                            1.0,
-                            correct_map["btag"]["deepJet_shape"].evaluate(
-                                f"up_{systlist[i]}",
-                                jet.hadronFlavour,
-                                jet.btagDeepFlavCvL,
-                                jet.btagDeepFlavCvB,
-                            ),
-                        )
-                        tmp_sfs_down = np.where(
-                            masknone,
-                            1.0,
-                            correct_map["btag"]["deepJet_shape"].evaluate(
-                                f"down_{systlist[i]}",
-                                jet.hadronFlavour,
-                                jet.btagDeepFlavCvL,
-                                jet.btagDeepFlavCvB,
-                            ),
-                        )
-                elif SFtype == "DeepCSVB":
-                    jet.btagDeepCvL = ak.fill_none(jet.btagDeepCvL, 0.0)
-                    jet.btagDeepCvB = ak.fill_none(jet.btagDeepCvB, 0.0)
-                    tmp_sfs = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["btag"]["deepCSV_shape"].evaluate(
-                            "central",
-                            jet.hadronFlavour,
-                            jet.btagDeepCvL,
-                            jet.btagDeepCvB,
-                        ),
-                    )
-                    tmp_sfs_up = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["btag"]["deepCSV_shape"].evaluate(
-                            f"up_{systlist[i]}",
-                            jet.hadronFlavour,
-                            jet.btagDeepCvL,
-                            jet.btagDeepCvB,
-                        ),
-                    )
-                    tmp_sfs_down = np.where(
-                        masknone,
-                        1.0,
-                        correct_map["btag"]["deepCSV_shape"].evaluate(
-                            f"down_{systlist[i]}",
-                            jet.hadronFlavour,
-                            jet.btagDeepCvL,
-                            jet.btagDeepCvB,
-                        ),
-                    )
+    counts = ak.num(alljet.pt)
+    flat_jet = ak.flatten(alljet)
+    flat_jet.hadronFlavour = ak.fill_none(flat_jet.hadronFlavour, 0)
 
-            sfs = sfs * tmp_sfs
-            if syst:
-                sfs_up = sfs_up * tmp_sfs_up
-                sfs_down = sfs_down * tmp_sfs_down
+    def evaluate_flat(syst_key):
+        jet = flat_jet
+        if "ctag" in correct_map.keys() and "correctionlib" in str(
+            type(correct_map["ctag"])
+        ):
+            if SFtype == "DeepJetC":
+                jet.btagDeepFlavCvL = ak.fill_none(jet.btagDeepFlavCvL, 0.0)
+                jet.btagDeepFlavCvB = ak.fill_none(jet.btagDeepFlavCvB, 0.0)
+                tmp_sfs = correct_map["ctag"]["deepJet_shape"].evaluate(
+                    syst_key,
+                    jet.hadronFlavour,
+                    jet.btagDeepFlavCvL,
+                    jet.btagDeepFlavCvB,
+                )
+            elif SFtype == "DeepCSVC":
+                jet.btagDeepCvL = ak.fill_none(jet.btagDeepCvL, 0.0)
+                jet.btagDeepCvB = ak.fill_none(jet.btagDeepCvB, 0.0)
+                tmp_sfs = correct_map["ctag"]["deepCSV_shape"].evaluate(
+                    syst_key,
+                    jet.hadronFlavour,
+                    jet.btagDeepCvL,
+                    jet.btagDeepCvB,
+                )
+            elif SFtype == "UParTAK4BC" or SFtype == "PNetBC":
+                if SFtype == "UParTAK4BC":
+                    jet_2Dbin = ak.fill_none(jet.btagUParTAK42Dbin, 0)
+                elif SFtype == "PNetBC":
+                    jet_2Dbin = ak.fill_none(jet.btagPNet2Dbin, 0)
+                jet_eta = ak.fill_none(jet.eta, 0)
+                jet_pt = ak.fill_none(jet.pt, 0)
+                if SFtype == "PNetBC":
+                    jet_2Dbin = ak.where(jet_2Dbin == -1, 0, jet_2Dbin)
+                tmp_sfs = correct_map["ctag"]["UParTAK4_pseudocontinuous"].evaluate(
+                    syst_key,
+                    jet.hadronFlavour,
+                    jet.btagUParTAK42Dbin,
+                    jet_eta,
+                    jet_pt,
+                )
+        elif "btag" in correct_map.keys() and "correctionlib" in str(
+            type(correct_map["btag"])
+        ):
+            if SFtype == "DeepJetB":
+                jet.btagDeepFlavCvL = ak.fill_none(jet.btagDeepFlavCvL, 0.0)
+                jet.btagDeepFlavCvB = ak.fill_none(jet.btagDeepFlavCvB, 0.0)
+                tmp_sfs = correct_map["btag"]["deepJet_shape"].evaluate(
+                    syst_key,
+                    jet.hadronFlavour,
+                    jet.btagDeepFlavCvL,
+                    jet.btagDeepFlavCvB,
+                )
+            elif SFtype == "DeepCSVB":
+                jet.btagDeepCvL = ak.fill_none(jet.btagDeepCvL, 0.0)
+                jet.btagDeepCvB = ak.fill_none(jet.btagDeepCvB, 0.0)
+                tmp_sfs = correct_map["btag"]["deepCSV_shape"].evaluate(
+                    syst_key,
+                    jet.hadronFlavour,
+                    jet.btagDeepCvL,
+                    jet.btagDeepCvB,
+                )
+        return ak.to_numpy(ak.prod(ak.unflatten(tmp_sfs, counts), axis=1))
 
-        if i == 0 and syst == False:
-            weights.add(SFtype, sfs)
-            break
-        else:
-            sfs_up_all[sys] = sfs_up
-            sfs_down_all[sys] = sfs_down
-    if syst == True:
-        weights.add_multivariation(
-            SFtype,
-            sfs,
-            systlist,
-            np.array(list(sfs_up_all.values())),
-            np.array(list(sfs_down_all.values())),
-        )
+    # "central" does not depend on the systematic, so it is evaluated once here instead of
+    # being recomputed (identically) on every one of the ~100 systlist iterations.
+    central = evaluate_flat("central")
+    if syst == False:
+        weights.add(SFtype, central)
+        return weights
+
+    sfs_up_all, sfs_down_all = {}, {}
+    for sys in systlist:
+        sfs_up_all[sys] = evaluate_flat(f"up_{sys}")
+        sfs_down_all[sys] = evaluate_flat(f"down_{sys}")
+
+    weights.add_multivariation(
+        SFtype,
+        central,
+        systlist,
+        np.array(list(sfs_up_all.values())),
+        np.array(list(sfs_down_all.values())),
+    )
     return weights
 
 
