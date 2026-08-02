@@ -1,7 +1,7 @@
 import awkward as ak
 import numpy as np
 from coffea import processor
-import psutil, os, gzip, importlib, cloudpickle
+import os, gzip, importlib, cloudpickle
 from coffea.jetmet_tools import JECStack, CorrectedJetsFactory, CorrectedMETFactory
 from coffea.lookup_tools import extractor
 
@@ -46,13 +46,6 @@ def campaign_map():
     return dirnames
 
 
-def memory_usage_psutil():
-    # return the memory usage in MB
-    process = psutil.Process(os.getpid())
-    mem = psutil.Process(os.getpid()).memory_info().rss / 1024**2
-    return mem
-
-
 def flatten(ar):  # flatten awkward into a 1d array to hist
     return ak.flatten(ar, axis=None)
 
@@ -86,10 +79,6 @@ def dump_lumi(events, output):
     output["run"] = processor.column_accumulator(pairs[:, 0])
     output["lumi"] = processor.column_accumulator(pairs[:, 1])
     return output
-
-
-def num(ar):
-    return ak.num(ak.fill_none(ar[~ak.is_none(ar)], 0), axis=0)
 
 
 ## Based on https://github.com/CoffeaTeam/coffea/discussions/735

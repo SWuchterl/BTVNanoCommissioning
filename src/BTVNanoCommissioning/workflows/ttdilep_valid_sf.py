@@ -133,13 +133,9 @@ class NanoProcessor(processor.ProcessorABC):
         ## Muon cuts
         # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
         if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
-            events.Muon = events.Muon[
-                (events.Muon.pt > 25) & mu_promptmvaid(events, self._campaign)
-            ]
+            events.Muon = events.Muon[(events.Muon.pt > 25) & mu_promptmvaid(events)]
         else:
-            events.Muon = events.Muon[
-                (events.Muon.pt > 25) & mu_idiso(events, self._campaign)
-            ]
+            events.Muon = events.Muon[(events.Muon.pt > 25) & mu_idiso(events)]
         events.Muon = ak.pad_none(events.Muon, 1, axis=1)
         req_muon = ak.count(events.Muon.pt, axis=1) == 1
 

@@ -33,9 +33,7 @@ def select_lepton(events, channel, campaign, iso_mode="tight"):
     eta_cut = 2.5 if ("24" or "25" in campaign) else 2.4
     if channel == "mu":
         tight = (
-            (events.Muon.pt > 30)
-            & (abs(events.Muon.eta) < eta_cut)
-            & mu_idiso(events, campaign)
+            (events.Muon.pt > 30) & (abs(events.Muon.eta) < eta_cut) & mu_idiso(events)
         )
         if iso_mode == "tight":
             mask = tight
@@ -889,9 +887,7 @@ class NanoProcessor(processor.ProcessorABC):
 
         # Loose veto objects
         mu_loose = (
-            (events.Muon.pt > 15)
-            & (abs(events.Muon.eta) < eta_cut)
-            & mu_idiso(events, self._campaign)
+            (events.Muon.pt > 15) & (abs(events.Muon.eta) < eta_cut) & mu_idiso(events)
         )
         el_loose = (
             (events.Electron.pt > 15)

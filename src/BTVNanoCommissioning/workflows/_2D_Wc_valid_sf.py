@@ -157,13 +157,9 @@ class NanoProcessor(processor.ProcessorABC):
         if isMu:
             # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
             if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
-                iso_lep = events.Muon[
-                    (events.Muon.pt > 26) & mu_promptmvaid(events, self._campaign)
-                ]
+                iso_lep = events.Muon[(events.Muon.pt > 26) & mu_promptmvaid(events)]
             else:
-                iso_lep = events.Muon[
-                    (events.Muon.pt > 26) & mu_idiso(events, self._campaign)
-                ]
+                iso_lep = events.Muon[(events.Muon.pt > 26) & mu_idiso(events)]
         elif isEle:
             if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
                 iso_lep = events.Electron[
@@ -187,7 +183,7 @@ class NanoProcessor(processor.ProcessorABC):
         if isMu:
             iso_lepindx = ak.mask(
                 ak.local_index(events.Muon.pt),
-                ((events.Muon.pt > 30) & mu_idiso(events, self._campaign)) == 1,
+                ((events.Muon.pt > 30) & mu_idiso(events)) == 1,
             )
         elif isEle:
             iso_lepindx = ak.mask(
@@ -305,13 +301,9 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Dilepton veto
         if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
-            dilep_mu = events.Muon[
-                (events.Muon.pt > 12) & mu_promptmvaid(events, self._campaign)
-            ]
+            dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_promptmvaid(events)]
         else:
-            dilep_mu = events.Muon[
-                (events.Muon.pt > 12) & mu_idiso(events, self._campaign)
-            ]
+            dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_idiso(events)]
         if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
             dilep_ele = events.Electron[
                 (events.Electron.pt > 15) & ele_promptmvaid(events, self._campaign)

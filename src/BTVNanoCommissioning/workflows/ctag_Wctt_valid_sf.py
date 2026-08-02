@@ -147,7 +147,7 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Lepton cuts
         # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
-        iso_mu = events.Muon[(events.Muon.pt > 30) & mu_idiso(events, self._campaign)]
+        iso_mu = events.Muon[(events.Muon.pt > 30) & mu_idiso(events)]
         iso_ele = events.Electron[
             (events.Electron.pt > 34) & ele_mvatightid(events, self._campaign)
         ]
@@ -172,7 +172,7 @@ class NanoProcessor(processor.ProcessorABC):
         if isMu:
             iso_lepindx = ak.mask(
                 ak.local_index(events.Muon.pt),
-                ((events.Muon.pt > 30) & mu_idiso(events, self._campaign)) == 1,
+                ((events.Muon.pt > 30) & mu_idiso(events)) == 1,
             )
         elif isEle:
             iso_lepindx = ak.mask(
@@ -195,7 +195,7 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Soft Muon cuts
         soft_muon = events.Muon[
-            softmu_mask(events, self._campaign)
+            softmu_mask(events)
             & (abs(events.Muon.dxy / events.Muon.dxyErr) > dxySigcut)
         ]
         req_softmu = ak.count(soft_muon.pt, axis=1) >= 1
@@ -264,7 +264,7 @@ class NanoProcessor(processor.ProcessorABC):
         # )
         # )
 
-        dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_idiso(events, self._campaign)]
+        dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_idiso(events)]
         dilep_ele = events.Electron[
             (events.Electron.pt > 15) & ele_mvatightid(events, self._campaign)
         ]

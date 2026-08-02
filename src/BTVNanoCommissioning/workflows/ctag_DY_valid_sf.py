@@ -158,13 +158,9 @@ class NanoProcessor(processor.ProcessorABC):
             "Winter25",
             "Prompt25",
         ]:  # NanoAODv15
-            dilep_mu = events.Muon[
-                (events.Muon.pt > 12) & mu_promptmvaid(events, self._campaign)
-            ]
+            dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_promptmvaid(events)]
         else:
-            dilep_mu = events.Muon[
-                (events.Muon.pt > 12) & mu_idiso(events, self._campaign)
-            ]
+            dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_idiso(events)]
 
         # Electron cuts
         if "2D" in self.selMod and self._campaign in [

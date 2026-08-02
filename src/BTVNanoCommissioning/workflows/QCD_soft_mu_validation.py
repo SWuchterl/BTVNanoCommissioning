@@ -117,7 +117,7 @@ class NanoProcessor(processor.ProcessorABC):
         muNeEmSum = 1
 
         soft_muon = events.Muon[
-            softmu_mask(events, self._campaign)
+            softmu_mask(events)
             & (abs(events.Muon.dxy / events.Muon.dxyErr) > dxySigcut)
             & (events.Muon.pt > 5)
         ]

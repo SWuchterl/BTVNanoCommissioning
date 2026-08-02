@@ -182,13 +182,17 @@ def jet_id(events, campaign, max_eta=2.5, min_pt=20):
     return jetmask
 
 
-## FIXME: Electron cutbased Id & MVA ID not exist in Winter22Run3 sample
-def ele_cuttightid(events, campaign):
-    ele_etaSC = (
+def _ele_etaSC(events, campaign):
+    return (
         events.Electron.eta + events.Electron.deltaEtaSC
         if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
         else events.Electron.superclusterEta
     )
+
+
+## FIXME: Electron cutbased Id & MVA ID not exist in Winter22Run3 sample
+def ele_cuttightid(events, campaign):
+    ele_etaSC = _ele_etaSC(events, campaign)
     elemask = (
         (abs(ele_etaSC) < 1.4442) | ((abs(ele_etaSC) > 1.566) & (abs(ele_etaSC) < 2.5))
     ) & (events.Electron.cutBased > 3)
@@ -196,11 +200,7 @@ def ele_cuttightid(events, campaign):
 
 
 def ele_mvatightid(events, campaign):
-    ele_etaSC = (
-        events.Electron.eta + events.Electron.deltaEtaSC
-        if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
-        else events.Electron.superclusterEta
-    )
+    ele_etaSC = _ele_etaSC(events, campaign)
     elemask = (
         (abs(ele_etaSC) < 1.4442) | ((abs(ele_etaSC) > 1.566) & (abs(ele_etaSC) < 2.5))
     ) & (events.Electron.mvaIso_WP80 > 0.5)
@@ -209,22 +209,22 @@ def ele_mvatightid(events, campaign):
 
 def ele_promptmvaid(events, campaign):
     # https://indico.cern.ch/event/1575017/contributions/6635248/attachments/3115862/5524310/EGammaAug08.pdf
-    ele_etaSC = (
-        events.Electron.eta + events.Electron.deltaEtaSC
-        if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
-        else events.Electron.superclusterEta
-    )
+    if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:
+        # No promptMVA WP is defined/validated for this campaign yet. All
+        # current call sites already gate on the campaign list above before
+        # calling this function, so this branch should be unreachable; it's
+        # an explicit guard rather than a real cut.
+        raise NotImplementedError(
+            f"ele_promptmvaid has no promptMVA working point defined for campaign '{campaign}'"
+        )
+    ele_etaSC = _ele_etaSC(events, campaign)
     elemask = (
         (abs(ele_etaSC) < 1.4442) | ((abs(ele_etaSC) > 1.566) & (abs(ele_etaSC) < 2.5))
-    ) & (
-        events.Electron.promptMVA >= 0.9
-        if campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
-        else 0.3
-    )
+    ) & (events.Electron.promptMVA >= 0.9)
     return elemask
 
 
-def softmu_mask(events, campaign, dxySigCut=0):
+def softmu_mask(events, dxySigCut=0):
     softmumask = (
         (events.Muon.pt < 25)
         & (abs(events.Muon.eta) < 2.4)
@@ -236,7 +236,7 @@ def softmu_mask(events, campaign, dxySigCut=0):
     return softmumask
 
 
-def mu_idiso(events, campaign):
+def mu_idiso(events):
     mumask = (
         (abs(events.Muon.eta) < 2.4)
         & (events.Muon.tightId > 0.5)
@@ -245,7 +245,7 @@ def mu_idiso(events, campaign):
     return mumask
 
 
-def mu_promptmvaid(events, campaign):
+def mu_promptmvaid(events):
     # https://muon-wiki.docs.cern.ch/guidelines/recommendations/#prompt-mva-formerly-tth-mva
     # https://muon-wiki.docs.cern.ch/guidelines/recommendations/#muon-isolation
     # https://cms-talk.web.cern.ch/t/prompt-mva-sfs-definition/132578
@@ -258,7 +258,7 @@ def mu_promptmvaid(events, campaign):
     return mumask
 
 
-def btag_mu_idiso(events, campaign):
+def btag_mu_idiso(events):
     mumask = (
         (abs(events.Muon.eta) < 2.4)
         & (events.Muon.tightId > 0.5)

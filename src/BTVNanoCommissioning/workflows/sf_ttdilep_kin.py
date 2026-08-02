@@ -331,7 +331,7 @@ class NanoProcessor(processor.ProcessorABC):
         # ----------------------------
         # Muons: pt > 25, |eta| < 2.4, tightId, pfRelIso04_all < 0.15
         muons = events.Muon
-        muon_sel = (muons.pt > 25) & mu_idiso(events, self._campaign)
+        muon_sel = (muons.pt > 25) & mu_idiso(events)
         muons = muons[muon_sel]
         # For simplicity, we take the first muon in each event
         mu0 = ak.pad_none(muons, 1, clip=True)[:, 0]

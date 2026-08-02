@@ -134,7 +134,7 @@ class NanoProcessor(processor.ProcessorABC):
         ## Muon cuts
         # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
 
-        muon_sel = (events.Muon.pt > 15) & (mu_idiso(events, self._campaign))
+        muon_sel = (events.Muon.pt > 15) & (mu_idiso(events))
         event_mu = events.Muon[muon_sel]
         req_muon = ak.num(event_mu.pt) == 1
 

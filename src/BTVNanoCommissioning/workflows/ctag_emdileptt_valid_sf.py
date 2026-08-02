@@ -123,12 +123,8 @@ class NanoProcessor(processor.ProcessorABC):
         req_trig_mu = HLT_helper(events, trigger_hm)
 
         # Muon cuts
-        iso_muon_mu = events.Muon[
-            (events.Muon.pt > 24) & mu_idiso(events, self._campaign)
-        ]
-        iso_muon_ele = events.Muon[
-            (events.Muon.pt > 14) & mu_idiso(events, self._campaign)
-        ]
+        iso_muon_mu = events.Muon[(events.Muon.pt > 24) & mu_idiso(events)]
+        iso_muon_ele = events.Muon[(events.Muon.pt > 14) & mu_idiso(events)]
 
         # Electron cuts
         iso_ele_ele = events.Electron[
@@ -166,7 +162,7 @@ class NanoProcessor(processor.ProcessorABC):
         req_jets = ak.count(event_jet.pt, axis=1) >= 2
 
         # Soft Muon cuts
-        soft_muon = events.Muon[softmu_mask(events, self._campaign)]
+        soft_muon = events.Muon[softmu_mask(events)]
         req_softmu = ak.count(soft_muon.pt, axis=1) >= 1
 
         # Muon jet cuts

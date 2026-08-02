@@ -131,7 +131,7 @@ class NanoProcessor(processor.ProcessorABC):
         req_metfilter = MET_filters(events, self._campaign)
 
         # Muon cuts
-        dilep_mu = events.Muon[(events.Muon.pt > 20) & mu_idiso(events, self._campaign)]
+        dilep_mu = events.Muon[(events.Muon.pt > 20) & mu_idiso(events)]
 
         # Electron cuts
         dilep_ele = events.Electron[

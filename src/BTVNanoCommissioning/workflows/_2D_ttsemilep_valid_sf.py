@@ -145,12 +145,10 @@ class NanoProcessor(processor.ProcessorABC):
         elif self.selMod == "semittM_2D":
             if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
                 event_iso_lep = events.Muon[
-                    (events.Muon.pt > 26) & mu_promptmvaid(events, self._campaign)
+                    (events.Muon.pt > 26) & mu_promptmvaid(events)
                 ]
             else:
-                event_iso_lep = events.Muon[
-                    (events.Muon.pt > 26) & mu_idiso(events, self._campaign)
-                ]
+                event_iso_lep = events.Muon[(events.Muon.pt > 26) & mu_idiso(events)]
             event_soft_mu = events.Muon[
                 (events.Muon.pt > 5)
                 & (abs(events.Muon.eta) < 2.5)

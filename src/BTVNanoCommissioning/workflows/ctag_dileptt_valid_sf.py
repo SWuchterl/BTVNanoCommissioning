@@ -89,9 +89,7 @@ class NanoProcessor(processor.ProcessorABC):
         # Lepton selections
         if self.selMod == "dilepttM":
             # dilepton selections
-            iso_muon = events.Muon[
-                (events.Muon.pt > 12) & mu_idiso(events, self._campaign)
-            ]
+            iso_muon = events.Muon[(events.Muon.pt > 12) & mu_idiso(events)]
             iso_lep = ak.pad_none(iso_muon, 2)
             req_lep = (ak.count(iso_lep.pt, axis=1) == 2) & (iso_lep[:, 0].pt > 20)
             # veto other flavors
@@ -107,9 +105,7 @@ class NanoProcessor(processor.ProcessorABC):
             iso_lep = ak.pad_none(iso_ele, 2)
             req_lep = (ak.count(iso_lep.pt, axis=1) == 2) & (iso_lep[:, 0].pt > 27)
             # veto other flavors
-            dilep_mu = events.Muon[
-                (events.Muon.pt > 12) & mu_idiso(events, self._campaign)
-            ]
+            dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_idiso(events)]
             req_dilepveto = ak.count(dilep_mu.pt, axis=1) == 0
 
         # veto Z events
@@ -127,7 +123,7 @@ class NanoProcessor(processor.ProcessorABC):
         req_jets = ak.count(event_jet.pt, axis=1) >= 2
 
         # Soft Muon cuts
-        soft_muon = events.Muon[softmu_mask(events, self._campaign)]
+        soft_muon = events.Muon[softmu_mask(events)]
         req_softmu = ak.count(soft_muon.pt, axis=1) >= 1
 
         # Muon jet cuts

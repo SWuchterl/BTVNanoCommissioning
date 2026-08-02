@@ -165,31 +165,6 @@ def make_tarfile(output_filename, source_dir, exclude_dirs=[]):
                 tar.add(file_path, arcname=os.path.relpath(file_path, source_dir))
 
 
-def get_condor_submitter_parser(parser):
-    parser.add_argument(
-        "--jobName",
-        help="Condor job name to make the job directory",
-        required=True,
-    )
-    parser.add_argument(
-        "--condorFileSize",
-        type=int,
-        default=50,
-        help="Number of files proceed per condor job",
-    )
-    parser.add_argument(
-        "--outputXrootdDir",
-        help="Output directory for xrootd files. Start with root://",
-        required=True,
-    )
-    parser.add_argument(
-        "--remoteRepo",
-        default=None,
-        help="If specified, access BTVNanoCommsioning from a remote tarball (downloaded via https), instead of from a transferred sandbox",
-    )
-    return parser
-
-
 def IO_parser(parser):
     ## Inputs
     parser.add_argument(
