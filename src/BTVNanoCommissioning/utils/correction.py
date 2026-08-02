@@ -36,6 +36,7 @@ from BTVNanoCommissioning.helpers.func import (
 from BTVNanoCommissioning.utils.AK4_parameters import correction_config as config
 
 _TTBAR_REWEIGHT_CACHE = {}
+_JPCALIB_CACHE = {}
 
 
 def _cvmfs_dir(campaign, pog):
@@ -3921,6 +3922,23 @@ class JPCalibHandler(object):
         prob_jet = np.maximum(prob_jet, 1e-30)
 
         return prob_jet
+
+
+def _get_jpcalib_handler(year, campaign, isRealData, dataset, isSyst):
+    """Cached construction of JPCalibHandler.
+
+    JPCalibHandler only reads its constructor args to pick a template file and
+    precompute derived arrays (see class docstring); it has no other mutable
+    state, so a single instance can be reused across every shift/chunk that
+    shares the same (year, campaign, isRealData, dataset, isSyst).
+    """
+    cache_key = (year, campaign, isRealData, dataset, isSyst)
+    if cache_key in _JPCALIB_CACHE:
+        return _JPCALIB_CACHE[cache_key]
+
+    handler = JPCalibHandler(year, campaign, isRealData, dataset, isSyst)
+    _JPCALIB_CACHE[cache_key] = handler
+    return handler
 
 
 def common_shifts(self, events):
