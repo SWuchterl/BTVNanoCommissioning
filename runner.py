@@ -354,9 +354,9 @@ def debug_parser(parser):
     parser.add_argument(
         "--validate-files-per-sample",
         type=int,
-        default=None,
+        default=2,
         metavar="N",
-        help="Only inspect the first N files per sample during pre-flight validation (default: all).",
+        help="Only inspect the first N files per sample during pre-flight validation (default: 2). Use 0 or a negative value to check all files.",
     )
     parser.add_argument(
         "--limit",
