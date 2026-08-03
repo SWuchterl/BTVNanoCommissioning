@@ -37,7 +37,7 @@ echo "Setting up mamba environment"
 if [[ ${ARGS[remoteRepo]} != "" ]]; then
     echo "remoteRepo is set to ${ARGS[remoteRepo]}"
     for i in {1..10}; do
-        wget -L micro.mamba.pm/install.sh
+        wget --timeout=20 --tries=1 -L micro.mamba.pm/install.sh
         if [ $? -eq 0 ]; then
             break
         fi
