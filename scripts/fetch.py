@@ -1427,6 +1427,16 @@ def getFilesFromDas(args):
         # Sort sites by completion percentage (highest first)
         site_completions.sort(key=lambda x: x[1], reverse=True)
 
+        # Prefer CERN-local EOS (root://eoscms.cern.ch, via T2_CH_CERN) over every other
+        # site when the dataset is actually present there: it skips the extra
+        # discovery/redirect hop the global redirector (root://cms-xrd-global.cern.ch) needs,
+        # without changing the responsiveness check or global-redirector fallback below --
+        # if T2_CH_CERN isn't listed here (dataset not present) or fails the responsiveness
+        # check just below, this falls straight through to the existing completion-sorted
+        # order and eventually the global redirector, same as before.
+        _CERN_LOCAL_SITE = "T2_CH_CERN"
+        site_completions.sort(key=lambda x: x[0] != _CERN_LOCAL_SITE)
+
         # Now check responsiveness only for the top sites in order of completion
         site_candidates = []
         if args.verbose:
