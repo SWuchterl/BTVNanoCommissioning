@@ -40,7 +40,7 @@ parser.add_argument(
 )
 
 
-def normalize_file(in_file, out_file, lumi_pb, dry_run):
+def normalize_file(in_file, out_file, lumi_pb, dry_run, step_size="100 MB"):
     with uproot.open(in_file) as f:
         if "TotalEventCount" not in f:
             print(f"WARNING: no TotalEventCount tree in {in_file} (malformed hadd?), skipping")
@@ -55,16 +55,9 @@ def normalize_file(in_file, out_file, lumi_pb, dry_run):
         if "Events" not in f or f["Events"].num_entries == 0:
             print(f"WARNING: no selected events in {in_file}, skipping")
             return
-        events = f["Events"].arrays(library="ak")
 
-    if is_mc:
-        if sumw == 0:
-            raise ValueError(f"sumw is 0 for {in_file}, cannot normalize")
-        weight = events["xSecWeight"] * (lumi_pb / sumw)
-        for branch in WEIGHT_BRANCHES:
-            weight = weight * events[branch]
-    else:
-        weight = ak.Array(np.ones(len(events)))
+    if is_mc and sumw == 0:
+        raise ValueError(f"sumw is 0 for {in_file}, cannot normalize")
 
     print(
         f"{in_file}: {'MC' if is_mc else 'data'}, n_processed={n_total:.0f}"
@@ -73,14 +66,27 @@ def normalize_file(in_file, out_file, lumi_pb, dry_run):
     if dry_run:
         return
 
-    events["lumi"] = ak.Array(np.full(len(events), lumi_pb))
-    events["weight"] = weight
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
     with uproot.recreate(out_file) as fout:
-        # Written as a dict of per-branch arrays, not a single record `ak.Array`: uproot's
-        # tree writer rejects a jagged field (e.g. LHEReweightingWeight) when it's inside a
-        # top-level record array, even though the exact same array writes fine as a branch.
-        fout["Events"] = {name: events[name] for name in events.fields}
+        first_chunk = True
+        for chunk in uproot.iterate(f"{in_file}:Events", library="ak", step_size=step_size):
+            if is_mc:
+                weight = chunk["xSecWeight"] * (lumi_pb / sumw)
+                for branch in WEIGHT_BRANCHES:
+                    weight = weight * chunk[branch]
+            else:
+                weight = ak.Array(np.ones(len(chunk)))
+            chunk["lumi"] = ak.Array(np.full(len(chunk), lumi_pb))
+            chunk["weight"] = weight
+            # Written as a dict of per-branch arrays, not a single record `ak.Array`: uproot's
+            # tree writer rejects a jagged field (e.g. LHEReweightingWeight) when it's inside a
+            # top-level record array, even though the exact same array writes fine as a branch.
+            branch_dict = {name: chunk[name] for name in chunk.fields}
+            if first_chunk:
+                fout["Events"] = branch_dict
+                first_chunk = False
+            else:
+                fout["Events"].extend(branch_dict)
         fout["TotalEventCount"] = ak.Array({"TotalEventCount": [n_total]})
         if is_mc:
             fout["TotalEventWeight"] = ak.Array({"TotalEventWeight": [sumw]})
