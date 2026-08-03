@@ -72,6 +72,8 @@ arraySchema = {
     + [
         "xSecWeight",
         "njet",
+        "osss",  # OS(+1)/SS(-1) tag; needed for Wc to reproduce the OS-SS
+        # subtraction applied to the histogram-based templates
         "SelJet_pt",
         "SelJet_eta",
         "SelJet_phi",
