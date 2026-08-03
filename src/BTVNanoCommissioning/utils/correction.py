@@ -12,6 +12,7 @@ import numpy as np
 import awkward as ak
 import uproot
 import correctionlib
+import numba
 
 try:
     import onnxruntime as ort
@@ -3443,6 +3444,10 @@ _C_HADRONS = {
     4232,
     4332,
 }
+# numba-friendly array forms of the sets above, for _find_top_hadron_pair's jitted kernel
+_LEPTON_IDS_ARR = np.array(sorted(_LEPTON_IDS), dtype=np.int64)
+_B_HADRONS_ARR = np.array(sorted(_B_HADRONS), dtype=np.int64)
+_C_HADRONS_ARR = np.array(sorted(_C_HADRONS), dtype=np.int64)
 
 
 def _load_frag_decay_maps():
@@ -3515,86 +3520,151 @@ def _load_frag_decay_maps():
     return payload
 
 
-def _find_top_hadron_pair(
-    pdg, mother, status, pt, mass, eta, phi, children, hadron_ids
+@numba.njit(cache=True)
+def _descends_from_numba(mother, idx, ancestor, n):
+    cur, steps = idx, 0
+    while cur >= 0 and steps < n + 5:
+        if cur == ancestor:
+            return True
+        cur = mother[cur] if cur < n else -1
+        steps += 1
+    return False
+
+
+@numba.njit(cache=True)
+def _has_lepton_descendant_numba(pdg, mother, idx, lepton_ids, n):
+    # Equivalent to "does idx have a lepton among its children/grandchildren/...";
+    # reformulated as "is idx an ancestor of some lepton" so it needs only the
+    # mother-pointer array, not a precomputed children map.
+    for j in range(n):
+        pid = pdg[j]
+        if pid < 0:
+            pid = -pid
+        is_lepton = False
+        for lid in lepton_ids:
+            if pid == lid:
+                is_lepton = True
+                break
+        if is_lepton and _descends_from_numba(mother, j, idx, n):
+            return True
+    return False
+
+
+@numba.njit(cache=True)
+def _best_hadron_numba(
+    pdg, mother, status, pt, hadron_ids, root_idx, first_copy_bit, n
 ):
-    """
-    For one event, find the heaviest B/C hadron pair descended from t and tbar.
-    Returns (tidx, w_mass, hid, h_semilep, aidx, aw_mass, ahid, ah_semilep) or None.
-    """
-    n = len(pdg)
-
-    def _descends_from(idx, ancestor):
-        cur, steps = idx, 0
-        while cur is not None and cur >= 0 and steps < n + 5:
-            if cur == ancestor:
-                return True
-            cur = mother[cur] if cur < n else -1
-            steps += 1
-        return False
-
-    def _has_lepton_descendant(idx):
-        stack, seen = [idx], set()
-        while stack:
-            cur = stack.pop()
-            if cur in seen:
+    # Heaviest first-copy hadron descended from root_idx; fall back to any copy.
+    for require_first in (True, False):
+        best_i, best_pt = -1, -1.0
+        for i in range(n):
+            apid = pdg[i]
+            if apid < 0:
+                apid = -apid
+            is_hadron = False
+            for hid in hadron_ids:
+                if apid == hid:
+                    is_hadron = True
+                    break
+            if not is_hadron:
                 continue
-            seen.add(cur)
-            for ch in children[cur]:
-                if abs(int(pdg[ch])) in _LEPTON_IDS:
-                    return True
-                stack.append(ch)
-        return False
+            if require_first and (status[i] & first_copy_bit) == 0:
+                continue
+            if _descends_from_numba(mother, i, root_idx, n) and pt[i] > best_pt:
+                best_i, best_pt = i, pt[i]
+        if best_i != -1:
+            return best_i
+    return -1
+
+
+@numba.njit(cache=True)
+def _find_top_hadron_pair_numba(
+    pdg, mother, status, pt, mass, hadron_ids, lepton_ids, first_copy_bit, last_copy_bit
+):
+    n = pdg.shape[0]
 
     # Last-copy top/antitop, with pdgId-only fallback
-    tidx = next(
-        (i for i in range(n) if pdg[i] == 6 and (status[i] & _LAST_COPY_BIT)), None
-    )
-    aidx = next(
-        (i for i in range(n) if pdg[i] == -6 and (status[i] & _LAST_COPY_BIT)), None
-    )
-    if tidx is None:
-        tidx = next((i for i in range(n) if pdg[i] == 6), None)
-    if aidx is None:
-        aidx = next((i for i in range(n) if pdg[i] == -6), None)
-    if tidx is None or aidx is None:
-        return None
+    tidx = -1
+    for i in range(n):
+        if pdg[i] == 6 and (status[i] & last_copy_bit) != 0:
+            tidx = i
+            break
+    aidx = -1
+    for i in range(n):
+        if pdg[i] == -6 and (status[i] & last_copy_bit) != 0:
+            aidx = i
+            break
+    if tidx == -1:
+        for i in range(n):
+            if pdg[i] == 6:
+                tidx = i
+                break
+    if aidx == -1:
+        for i in range(n):
+            if pdg[i] == -6:
+                aidx = i
+                break
+    if tidx == -1 or aidx == -1:
+        return False, -1, 0.0, -1, False, -1, 0.0, -1, False
 
     # W boson mass from first W child of each top
-    w_m = next((mass[c] for c in children[tidx] if abs(pdg[c]) == 24), None)
-    aw_m = next((mass[c] for c in children[aidx] if abs(pdg[c]) == 24), None)
-    if w_m is None or aw_m is None:
-        return None
+    w_m, found_w = 0.0, False
+    for i in range(n):
+        if mother[i] == tidx:
+            apid = pdg[i]
+            if apid < 0:
+                apid = -apid
+            if apid == 24:
+                w_m, found_w = mass[i], True
+                break
+    aw_m, found_aw = 0.0, False
+    for i in range(n):
+        if mother[i] == aidx:
+            apid = pdg[i]
+            if apid < 0:
+                apid = -apid
+            if apid == 24:
+                aw_m, found_aw = mass[i], True
+                break
+    if not found_w or not found_aw:
+        return False, -1, 0.0, -1, False, -1, 0.0, -1, False
 
-    # Heaviest first-copy hadron descended from each top; fall back to any copy
-    def _best_hadron(root_idx):
-        for require_first in (True, False):
-            best_i, best_pt = None, -1.0
-            for i in range(n):
-                if abs(int(pdg[i])) not in hadron_ids:
-                    continue
-                if require_first and not (status[i] & _FIRST_COPY_BIT):
-                    continue
-                if _descends_from(i, root_idx) and pt[i] > best_pt:
-                    best_i, best_pt = i, pt[i]
-            if best_i is not None:
-                return best_i
-        return None
-
-    hid, ahid = _best_hadron(tidx), _best_hadron(aidx)
-    if hid is None or ahid is None:
-        return None
-
-    return (
-        tidx,
-        w_m,
-        hid,
-        _has_lepton_descendant(hid),
-        aidx,
-        aw_m,
-        ahid,
-        _has_lepton_descendant(ahid),
+    hid = _best_hadron_numba(
+        pdg, mother, status, pt, hadron_ids, tidx, first_copy_bit, n
     )
+    ahid = _best_hadron_numba(
+        pdg, mother, status, pt, hadron_ids, aidx, first_copy_bit, n
+    )
+    if hid == -1 or ahid == -1:
+        return False, -1, 0.0, -1, False, -1, 0.0, -1, False
+
+    h_sl = _has_lepton_descendant_numba(pdg, mother, hid, lepton_ids, n)
+    ah_sl = _has_lepton_descendant_numba(pdg, mother, ahid, lepton_ids, n)
+
+    return True, tidx, w_m, hid, h_sl, aidx, aw_m, ahid, ah_sl
+
+
+def _find_top_hadron_pair(pdg_a, mother_a, status_a, pt_a, mass_a, hadron_ids_arr):
+    """
+    For one event, find the heaviest B/C hadron pair descended from t and tbar.
+    pdg_a/mother_a/status_a/pt_a/mass_a are per-event numpy arrays (see
+    add_fragmentation_decay_weights for how they're built from GenPart fields).
+    Returns (tidx, w_mass, hid, h_semilep, aidx, aw_mass, ahid, ah_semilep) or None.
+    """
+    found, tidx, w_m, hid, h_sl, aidx, aw_m, ahid, ah_sl = _find_top_hadron_pair_numba(
+        pdg_a,
+        mother_a,
+        status_a,
+        pt_a,
+        mass_a,
+        hadron_ids_arr,
+        _LEPTON_IDS_ARR,
+        _FIRST_COPY_BIT,
+        _LAST_COPY_BIT,
+    )
+    if not found:
+        return None
+    return tidx, w_m, hid, h_sl, aidx, aw_m, ahid, ah_sl
 
 
 def add_fragmentation_decay_weights(weights, pruned_ev, isSyst=False):
@@ -3685,14 +3755,17 @@ def add_fragmentation_decay_weights(weights, pruned_ev, isSyst=False):
         phi = phi_all[ievt]
         mass = mass_all[ievt]
         n_gp = len(pdg)
-        children = [[] for _ in range(n_gp)]
-        for i, m in enumerate(mother):
-            if m is not None and 0 <= m < n_gp:
-                children[m].append(i)
+        pdg_a = np.asarray(pdg, dtype=np.int64)
+        mother_a = np.array(
+            [m if m is not None else -1 for m in mother], dtype=np.int64
+        )
+        status_a = np.asarray(status, dtype=np.int64)
+        pt_a = np.asarray(pt, dtype=np.float64)
+        mass_a = np.asarray(mass, dtype=np.float64)
 
-        for hadron_ids, pf in ((_B_HADRONS, "b"), (_C_HADRONS, "c")):
+        for hadron_ids_arr, pf in ((_B_HADRONS_ARR, "b"), (_C_HADRONS_ARR, "c")):
             res = _find_top_hadron_pair(
-                pdg, mother, status, pt, mass, eta, phi, children, hadron_ids
+                pdg_a, mother_a, status_a, pt_a, mass_a, hadron_ids_arr
             )
             if res is None:
                 continue
