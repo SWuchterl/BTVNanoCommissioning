@@ -42,6 +42,9 @@ parser.add_argument(
 
 def normalize_file(in_file, out_file, lumi_pb, dry_run):
     with uproot.open(in_file) as f:
+        if "TotalEventCount" not in f:
+            print(f"WARNING: no TotalEventCount tree in {in_file} (malformed hadd?), skipping")
+            return
         is_mc = "TotalEventWeight" in f
         n_total = float(np.sum(f["TotalEventCount"]["TotalEventCount"].array(library="np")))
         sumw = (
@@ -74,7 +77,10 @@ def normalize_file(in_file, out_file, lumi_pb, dry_run):
     events["weight"] = weight
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
     with uproot.recreate(out_file) as fout:
-        fout["Events"] = events
+        # Written as a dict of per-branch arrays, not a single record `ak.Array`: uproot's
+        # tree writer rejects a jagged field (e.g. LHEReweightingWeight) when it's inside a
+        # top-level record array, even though the exact same array writes fine as a branch.
+        fout["Events"] = {name: events[name] for name in events.fields}
         fout["TotalEventCount"] = ak.Array({"TotalEventCount": [n_total]})
         if is_mc:
             fout["TotalEventWeight"] = ak.Array({"TotalEventWeight": [sumw]})
