@@ -6,6 +6,7 @@ import json
 import os
 import re
 import warnings
+from collections.abc import MutableMapping
 
 import numpy as np
 import awkward as ak
@@ -53,7 +54,7 @@ def _cvmfs_dir(campaign, pog):
     return campaign_map()[campaign]
 
 
-def load_SF(year, campaign, selMod="default", syst=False):
+def _load_SF_impl(year, campaign, selMod="default", syst=False):
     """
     Load scale factors (SF) for a given year and campaign.
 
@@ -490,6 +491,56 @@ def load_SF(year, campaign, selMod="default", syst=False):
                     correct_map["jetveto"] = ext.make_evaluator()
 
     return correct_map
+
+
+_SF_MAP_CACHE = {}
+
+
+class _LazySFMap(MutableMapping):
+    """Picklable placeholder for load_SF()'s output.
+
+    Pickles down to just (year, campaign, selMod, syst); the actual CorrectionSets/evaluators are
+    built (or reused from _SF_MAP_CACHE) lazily on first real access in whatever process unpickles
+    it. This keeps coffea's per-chunk-task processor_instance pickling cheap under dask/parsl
+    executors instead of shipping a multi-MB payload with every task.
+    """
+
+    def __init__(self, year, campaign, selMod="default", syst=False):
+        self._key = (year, campaign, selMod, syst)
+
+    def _resolve(self):
+        if self._key not in _SF_MAP_CACHE:
+            _SF_MAP_CACHE[self._key] = _load_SF_impl(*self._key)
+        resolved = _SF_MAP_CACHE[self._key]
+        assert (
+            resolved.get("campaign") == self._key[1]
+        ), f"SF_map cache key/content mismatch: expected campaign {self._key[1]!r}, got {resolved.get('campaign')!r}"
+        return resolved
+
+    def __getitem__(self, key):
+        return self._resolve()[key]
+
+    def __setitem__(self, key, value):
+        self._resolve()[key] = value
+
+    def __delitem__(self, key):
+        del self._resolve()[key]
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self):
+        return len(self._resolve())
+
+    def __repr__(self):
+        return repr(self._resolve())
+
+    def __reduce__(self):
+        return (_LazySFMap, self._key)
+
+
+def load_SF(year, campaign, selMod="default", syst=False):
+    return _LazySFMap(year, campaign, selMod, syst)
 
 
 def load_lumi(campaign):
