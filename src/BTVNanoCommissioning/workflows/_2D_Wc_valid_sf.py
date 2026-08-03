@@ -528,9 +528,9 @@ class NanoProcessor(processor.ProcessorABC):
                 )
         else:
             isRealData = True
-            genflavor = ak.ones_like(pruned_ev.SelJet.pt, dtype=int)
+            genflavor = ak.zeros_like(pruned_ev.SelJet.pt, dtype=int)
             if "MuonJet" in pruned_ev.fields:
-                smflav = ak.ones_like(pruned_ev.MuonJet.pt, dtype=int)
+                smflav = ak.zeros_like(pruned_ev.MuonJet.pt, dtype=int)
 
         # Store masks for additional cuts
         # pruned_ev["mask_njets"] = req_jets[event_level]
