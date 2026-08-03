@@ -322,7 +322,7 @@ def normalize_xrootd_url(url):
     return urls
 
 
-def access_xrootd_file(url, xrootd_tools, check_all_variants=False):
+def access_xrootd_file(url, xrootd_tools):
     """Try to access file with variants of the URL using both stat and open"""
     from XRootD import client
     import threading
@@ -361,7 +361,6 @@ def access_xrootd_file(url, xrootd_tools, check_all_variants=False):
 
     timeout = 30  # 40 seconds timeout
     url_variants = normalize_xrootd_url(url)
-    success_results = []
 
     for variant in url_variants:
         variant_success = False
@@ -379,9 +378,7 @@ def access_xrootd_file(url, xrootd_tools, check_all_variants=False):
             if open_status.ok:
                 file_client.close()
                 variant_success = True
-                success_results.append((True, variant, "open"))
-                if not check_all_variants:
-                    return True, variant
+                return True, variant
         except TimeoutException:
             print(f"⚠️ Open timed out after {timeout}s with URL variant {variant}")
         except Exception as e:
@@ -400,18 +397,11 @@ def access_xrootd_file(url, xrootd_tools, check_all_variants=False):
 
                 if status.ok:
                     variant_success = True
-                    success_results.append((True, variant, "stat"))
-                    if not check_all_variants:
-                        return True, variant
+                    return True, variant
             except TimeoutException:
                 print(f"⚠️ Stat timed out after {timeout}s with URL variant {variant}")
             except Exception as e:
                 print(f"❌ Stat failed with URL variant {variant}: {e}")
-
-    # If we get here and check_all_variants=True, we need to check if any variant succeeded
-    if success_results:
-        # Return the first success (or you could choose based on other criteria)
-        return success_results[0][0], success_results[0][1]
 
     return False, None
 
@@ -960,24 +950,10 @@ def check_xrootd_availability():
     }
 
 
-def check_site_completion(site, dataset, xrootd_tools):
+def check_site_completion(site, dataset, xrootd_tools, total_files_count):
     """Check what percentage of the dataset is available at the site by directly counting files"""
     try:
-        # Get total file list once for the entire dataset
         in_ci = determine_execution_mode()
-
-        if in_ci:
-            total_files_cmd = f'/cms.cern.ch/common/dasgoclient -query="file dataset={dataset} | grep file.name"'
-        else:
-            total_files_cmd = (
-                f'dasgoclient -query="file dataset={dataset} | grep file.name"'
-            )
-
-        # print(f"Getting file list for {dataset}...")
-        total_files_result = run_das_command(total_files_cmd)
-        total_files_count = len(
-            [f for f in total_files_result if f and not f.startswith("ERROR:")]
-        )
 
         if total_files_count == 0:
             print_dataset_empty(dataset)
@@ -1055,9 +1031,7 @@ def check_site_responsiveness(
             # Construct the full PFN using the site's redirector rules
             full_pfn = _get_pfn_for_site(test_file, sites_xrootd_prefix[site])
             # Use the existing access_xrootd_file function
-            success, working_url = access_xrootd_file(
-                full_pfn, xrootd_tools, check_all_variants=True
-            )
+            success, working_url = access_xrootd_file(full_pfn, xrootd_tools)
 
             if success:
                 successful_files += 1
@@ -1439,7 +1413,12 @@ def getFilesFromDas(args):
                 continue
 
             # Only check completion first
-            completion = check_site_completion(site, dataset, xrootd_tools)
+            completion = check_site_completion(
+                site,
+                dataset,
+                xrootd_tools,
+                len([f for f in flist if f and not f.startswith("ERROR:")]),
+            )
 
             # Save all sites with files for sorting
             if completion > 0:
