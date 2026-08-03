@@ -1,20 +1,8 @@
 import os
 import json
 import shutil
-import tarfile
 import argparse
 import subprocess
-
-
-def make_tarfile(output_filename, source_dir, exclude_dirs=[]):
-    with tarfile.open(output_filename, "w:gz") as tar:
-        for root, dirs, files in os.walk(source_dir):
-            dirs[:] = [
-                d for d in dirs if d not in exclude_dirs
-            ]  # Exclude specified directories
-            for file in files:
-                file_path = os.path.join(root, file)
-                tar.add(file_path, arcname=os.path.relpath(file_path, source_dir))
 
 
 # From https://github.com/PocketCoffea/PocketCoffea/blob/main/pocket_coffea/utils/network.py
@@ -172,32 +160,6 @@ if __name__ == "__main__":
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     base_dir = current_dir.replace("/condor_lxplus", "")
-    """
-    if args.remoteRepo is not None:
-        print("Will use a remote path to access BTVNanoCommissioning:", args.remoteRepo)
-    else:
-        print("Tarring BTVNanoCommissioning directory...")
-
-        skip_tar = False
-        if os.path.exists("BTVNanoCommissioning.tar.gz"):
-            user_input = input(
-                "BTVNanoCommissioning.tar.gz already exists, skip the tarring? (y/n): "
-            )
-            if user_input.lower() == "y":
-                skip_tar = True
-            elif user_input.lower() == "n":
-                skip_tar = False
-                os.remove("BTVNanoCommissioning.tar.gz")
-            else:
-                raise Exception("Invalid input, exiting")
-
-        if not skip_tar:
-            make_tarfile(
-                "BTVNanoCommissioning.tar.gz",
-                base_dir,
-                exclude_dirs=["jsonpog-integration", "BTVNanoCommissioning.egg-info"],
-            )
-    """
     # Create job dir
     job_dir = f"jobs_{args.jobName}"
     if os.path.exists(job_dir):
