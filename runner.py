@@ -386,7 +386,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.isSyst == "False":
         args.isSyst = False
-    os.environ["BTV_TTBAR_REWEIGHTS"] = args.ttbar_reweights
     print("Running with the following options:")
     print(args)
     ogoutput = args.output
@@ -511,8 +510,8 @@ if __name__ == "__main__":
         args.isArray,
         args.noHist,
         args.chunk,
+        args.ttbar_reweights,
     )
-    setattr(processor_instance, "ttbar_reweights", args.ttbar_reweights)
 
     if args.skip_structure_validation:
         print("Skipping dataset structure validation (--skip-structure-validation).")

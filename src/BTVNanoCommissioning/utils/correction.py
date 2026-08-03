@@ -4107,7 +4107,7 @@ def common_shifts(self, events):
 
 
 # common weights
-def weight_manager(pruned_ev, SF_map, isSyst, ttbar_reweights=None, campaign=None):
+def weight_manager(pruned_ev, SF_map, isSyst, ttbar_reweights="none", campaign=None):
     """
     Example for Scaling Factors (SFs):
     ```python
@@ -4147,11 +4147,8 @@ def weight_manager(pruned_ev, SF_map, isSyst, ttbar_reweights=None, campaign=Non
     else:
         weights.add("ttbar_weight", nom)
 
-    # Additional ttbar reweighting hooks (enabled via runner flag/environment)
+    # Additional ttbar reweighting hooks (enabled via runner flag).
     # Apply only to MC ttbar samples.
-    if ttbar_reweights is None:
-        ttbar_reweights = os.environ.get("BTV_TTBAR_REWEIGHTS", "none")
-
     if is_ttbar_mc and ttbar_reweights in ("hdamp_ml", "full"):
         add_hdamp_ml_weight(weights, pruned_ev, campaign=campaign, isSyst=isSyst)
     if is_ttbar_mc and ttbar_reweights == "full":

@@ -48,6 +48,7 @@ class NanoProcessor(processor.ProcessorABC):
         isArray=False,
         noHist=False,
         chunksize=75000,
+        ttbar_reweights="none",
         selectionModifier="",
     ):
         self._year = year
@@ -58,6 +59,7 @@ class NanoProcessor(processor.ProcessorABC):
         self.noHist = noHist
         self.lumiMask = load_lumi(self._campaign)
         self.chunksize = chunksize
+        self.ttbar_reweights = ttbar_reweights
         ## Load corrections
         self.SF_map = load_SF(self._year, self._campaign)
         self.selectionModifier = selectionModifier
@@ -265,7 +267,7 @@ class NanoProcessor(processor.ProcessorABC):
             pruned_ev,
             self.SF_map,
             self.isSyst,
-            ttbar_reweights=getattr(self, "ttbar_reweights", "none"),
+            ttbar_reweights=self.ttbar_reweights,
         )
         if isRealData:
             if self._year == "2022":

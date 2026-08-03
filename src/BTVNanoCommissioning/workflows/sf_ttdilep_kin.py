@@ -222,6 +222,7 @@ class NanoProcessor(processor.ProcessorABC):
         isArray=True,
         noHist=False,
         chunksize=75000,
+        ttbar_reweights="none",
         model_base="KIN_MVA_BDT",
     ):
         self._year = year
@@ -232,6 +233,7 @@ class NanoProcessor(processor.ProcessorABC):
         self.noHist = noHist
         self.lumiMask = load_lumi(self._campaign)
         self.chunksize = chunksize
+        self.ttbar_reweights = ttbar_reweights
         # try with os if model base path exists otherwise set self.model_base to None
         if os.path.exists(join(model_base, f"{self._campaign}_{self._year}")):
             self.model_base = model_base
@@ -555,7 +557,7 @@ class NanoProcessor(processor.ProcessorABC):
             pruned_ev,
             self.SF_map,
             self.isSyst,
-            ttbar_reweights=getattr(self, "ttbar_reweights", "none"),
+            ttbar_reweights=self.ttbar_reweights,
             campaign=self._campaign,
         )
         # Configure systematics

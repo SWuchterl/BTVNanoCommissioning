@@ -312,6 +312,7 @@ class NanoProcessor(processor.ProcessorABC):
         isArray=False,
         noHist=False,
         chunksize=10000,
+        ttbar_reweights="none",
         selectionModifier="mu",  # "mu" or "el"
         tag_tagger="UParTAK4",
     ):
@@ -323,6 +324,7 @@ class NanoProcessor(processor.ProcessorABC):
         self.noHist = noHist
         self.lumiMask = load_lumi(self._campaign)
         self.chunksize = chunksize
+        self.ttbar_reweights = ttbar_reweights
         if selectionModifier not in ["el", "mu"]:
             raise ValueError(f"Invalid selectionModifier: {selectionModifier}")
         self.channel = selectionModifier
@@ -1289,7 +1291,7 @@ class NanoProcessor(processor.ProcessorABC):
                         pr,
                         self.SF_map,
                         self.isSyst,
-                        ttbar_reweights=getattr(self, "ttbar_reweights", "none"),
+                        ttbar_reweights=self.ttbar_reweights,
                         campaign=self._campaign,
                     )
                     systematics = (
