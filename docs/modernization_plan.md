@@ -486,6 +486,7 @@ mixed into that ranking.
   **Fix:** add `--timeout=20 --tries=1` to the `wget` call, keeping the existing outer
   retry/sleep loop as the retry mechanism, so a bad node fails each attempt in ~20s instead of
   minutes. **Risk:** low, setup-script only, no physics impact. **Files:** `condor/execute.sh`.
+  **Status: implemented** (commit `922004c`).
 - **Dataset file lists route through the global XRootD redirector (`root://cms-xrd-global.cern.ch`)
   even for files that are already on CERN EOS, adding redirect/discovery overhead per file-open
   across thousands of jobs.** `scripts/fetch.py` already has the machinery for this
@@ -500,10 +501,37 @@ mixed into that ranking.
   a single redirector. **Risk:** low if the fallback path is preserved; must not silently drop a
   file if neither resolves (same failure mode `--skipbadfiles` already handles). **Files:**
   `scripts/fetch.py`, regenerated `metadata/CustomSummer24/*_2D_*_Wc_sf_*.json`.
+  **Status: implemented** (commit `5650752`).
 
 **Remark:** neither item above was caught by the original four-review sweep because none of them
-looked at `condor/`/`condor_lxplus/` at all. Worth a dedicated review pass over the condor
-submission scripts (`condor/execute.sh`, `condor/submitter.py`, `condor_lxplus/execute.sh`,
-`condor_lxplus/submitter.py`) once the ranked ten above are done, specifically for other
-setup/I-O inefficiencies of this kind (unbounded network calls, redundant per-job installs,
-redirector choices) — this pair is very likely not exhaustive.
+looked at `condor/`/`condor_lxplus/` at all.
+
+**Status: the dedicated review pass has since been done, twice.** A first pass produced
+`docs/condor_review.md` (combined architecture/simplify/performance, commit `7ae66a6`, same commit
+as this plan). A second, deeper pass — one agent per review type, cross-checked against the first
+pass to avoid duplicate findings — produced `docs/condor_architecture_review.md`,
+`docs/condor_performance_review.md`, `docs/condor_io_review.md`, `docs/condor_simplify_review.md`.
+Nothing from either pass has been actioned yet beyond the two items above; documenting only for now.
+Highest-priority items surfaced, not yet fixed:
+
+- **Correctness, not just performance:** `scripts/fetch.py`'s `process_single_dataset()` (used only
+  by `--executor futures`) applies a `MuonEG`-specific dataset-name correction that the
+  `--executor iterative` path (calling `getFilesFromDas()` directly) never sees — the same input
+  dataset can produce different `metadata/*.json` keys depending purely on which executor flag was
+  used to generate them. See `docs/condor_architecture_review.md` finding 2.
+- `scripts/fetch.py:12` imports `get_xrootd_sites_map` from `utils/xrootdtools.py` then shadows it
+  with a local redefinition at `fetch.py:190` — two copies of the SITECONF-parsing logic (also used
+  by `condor_lxplus/checkoutputs.py`) that have already drifted apart. Flagged independently by both
+  the architecture and simplify passes.
+- Every job rebuilds its Python env from scratch (`condor/execute.sh`: micromamba bootstrap +
+  `pip install -e .` pulling all of `coffea`'s deps + a separate `psutil` install) — flagged as top
+  severity by both the io and performance passes. `condor_lxplus` avoids this via a prebuilt
+  EOS-mounted env instead.
+- `fetch.py --from_dataset` without `--from_workflow` hits an unguarded `NameError` (currently
+  unexercised — every known call site passes both flags); a `--from_dataset`-without-`--from_workflow`-mode
+  is presumably intentional and dormant. `condor/execute.sh`'s micromamba-bootstrap gate is
+  always-true due to a `jq`-renders-unset-as-`"null"` vs. `!= ""` mismatch, inconsistent with the
+  correctly-written `!= "null"` checks used elsewhere in the same file.
+
+Full findings, including lower-severity items and what was confirmed sound, are in the four
+`docs/condor_*_review.md` files above.
