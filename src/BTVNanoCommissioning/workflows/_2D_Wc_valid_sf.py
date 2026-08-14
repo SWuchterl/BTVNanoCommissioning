@@ -279,6 +279,12 @@ class NanoProcessor(processor.ProcessorABC):
         jetindx = ak.pad_none(jetindx, 1)
         jetindx = jetindx[:, 0]
 
+        ## raw jet index of the jet actually stored as MuonJet/SelJet
+        ## (sjets[:, 0]). `jetindx` above cannot be used for this: ak.mask keeps
+        ## positions, so it holds raw Jet slot 0 (None whenever that slot is not
+        ## itself the muon-tagged jet), not the leading jet_sel jet.
+        jetindx1 = ak.pad_none(ak.local_index(events.Jet.pt)[jet_sel], 1)[:, 0]
+
         # Other cuts
         # Ratio between soft muon pt and muon jet pt
         # req_pTratio = (soft_muon[:, 0].pt / mu_jet[:, 0].pt) < muonpTratioCut
@@ -471,11 +477,12 @@ class NanoProcessor(processor.ProcessorABC):
         pruned_ev["MuonJet"] = (
             smuon_jet  # leading selected jet fullfilling all event-level cuts
         )
-        # Match secondary vertices to the muon-tagged jet. Some private
-        # NanoAOD productions (e.g. CustomSummer24) keep the SV collection
-        # but drop the Jet->SV index link, so check for it too.
-        if "SV" in events.fields and "svIdx1" in events.Jet.fields:
-            svmass, svd3dsig = SV_link(events, event_level, jetindx)
+        # Match secondary vertices to the muon-tagged jet. SV_link falls
+        # back to a dR match when the Jet->SV index link is unavailable
+        # (e.g. CustomSummer24, a private NanoAOD production that keeps the
+        # SV collection but drops it).
+        if "SV" in events.fields:
+            svmass, svd3dsig = SV_link(events, event_level, jetindx1)
             pruned_ev["MuonJet", "svmass"] = svmass
             pruned_ev["MuonJet", "svd3dsig"] = svd3dsig
         pruned_ev["SoftMuon"] = ssmu

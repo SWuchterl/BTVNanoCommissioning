@@ -343,13 +343,10 @@ class NanoProcessor(processor.ProcessorABC):
             pruned_ev["PFCands"] = PFCand_link(events, event_level, jetindx)
 
         # Match secondary vertices to each of the (up to 3) selected jets.
-        # Some private NanoAOD productions (e.g. CustomSummer24) keep the SV
-        # collection but drop the Jet->SV index link, so check for it too.
-        if (
-            "SV" in events.fields
-            and "svIdx1" in events.Jet.fields
-            and "QG" not in self.selMod
-        ):
+        # SV_link_ragged falls back to a dR match when the Jet->SV index link
+        # is unavailable (e.g. CustomSummer24, a private NanoAOD production
+        # that keeps the SV collection but drops it).
+        if "SV" in events.fields and "QG" not in self.selMod:
             svmass, svd3dsig = SV_link_ragged(
                 events, event_level, jetindx3[event_level][:, :3]
             )

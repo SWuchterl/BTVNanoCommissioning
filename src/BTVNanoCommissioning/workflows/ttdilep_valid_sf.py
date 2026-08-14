@@ -193,6 +193,12 @@ class NanoProcessor(processor.ProcessorABC):
         jetindx = ak.pad_none(jetindx, 2)
         jetindx = jetindx[:, :2]
 
+        ## raw jet index of the two jets actually stored as SelJet. `jetindx`
+        ## above cannot be used for this: ak.mask keeps positions, so it holds
+        ## raw Jet slots 0/1 (None when they fail jetsel), not the first two
+        ## *selected* jets.
+        jetindx2 = ak.local_index(events.Jet.pt)[jetsel][:, :2]
+
         ## MET
         if self.selMod == "ttdilep_sf_2D":
             event_MET = ak.zip(
@@ -250,15 +256,12 @@ class NanoProcessor(processor.ProcessorABC):
         if "PFCands" in events.fields:
             pruned_ev.PFCands = PFCand_link(events, event_level, jetindx)
 
-        # Match secondary vertices to the two selected jets. Some private
-        # NanoAOD productions (e.g. CustomSummer24) keep the SV collection
-        # but drop the Jet->SV index link, so check for it too.
-        if (
-            self.selMod == "ttdilep_sf_2D"
-            and "SV" in events.fields
-            and "svIdx1" in events.Jet.fields
-        ):
-            svmass, svd3dsig = SV_link(events, event_level, jetindx)
+        # Match secondary vertices to the two selected jets. SV_link falls
+        # back to a dR match when the Jet->SV index link is unavailable
+        # (e.g. CustomSummer24, a private NanoAOD production that keeps the
+        # SV collection but drops it).
+        if self.selMod == "ttdilep_sf_2D" and "SV" in events.fields:
+            svmass, svd3dsig = SV_link(events, event_level, jetindx2)
             pruned_ev["SelJet", "svmass"] = ak.concatenate(
                 [svmass[0][:, None], svmass[1][:, None]], axis=1
             )
