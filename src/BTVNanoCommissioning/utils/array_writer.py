@@ -64,10 +64,11 @@ arraySchema = {
         "Pileup_nPU",
     ],
     # Minimal per-jet content shared by DY/Wc/ttdilep: kinematics, flavour,
-    # associated SV mass, the raw Jet-collection index (jetIdx, meaningless/absent
-    # for Wc where SelJet is the single muon-tagged jet, not a per-jet list), and
-    # only the inclusive HFvLF/BvC scores of the taggers built for this 2D method
-    # (PNet, UParTAK4, NoPIDParTAK4) -- not their pT-binned/2Dbin/t sub-variants.
+    # associated SV mass and multiplicity, the raw Jet-collection index (jetIdx,
+    # meaningless/absent for Wc where SelJet is the single muon-tagged jet, not a
+    # per-jet list), and only the inclusive HFvLF/BvC scores of the taggers built
+    # for this 2D method (PNet, UParTAK4, NoPIDParTAK4) -- not their
+    # pT-binned/2Dbin/t sub-variants.
     "SLIM": _WEIGHT_BRANCHES
     + [
         "xSecWeight",
@@ -81,6 +82,7 @@ arraySchema = {
         "SelJet_hadronFlavour",
         "SelJet_partonFlavour",
         "SelJet_svmass",
+        "SelJet_nSVs",
         "SelJet_jetIdx",
         "SelJet_btagPNetHFvLF",
         "SelJet_btagPNetBvC",
