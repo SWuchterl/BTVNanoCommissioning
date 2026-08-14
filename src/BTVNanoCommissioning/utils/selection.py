@@ -366,6 +366,21 @@ _c2D = {
     "M": [41, 44],
     "T": [42, 44],
 }
+
+# Phase4 category scheme (SFbc-2D/OptimizedWP/results/phase4_scheme_NoPIDParT.json,
+# tagger NoPIDParT). Kept alongside _mapping/_b2D/_c2D (untouched) rather than
+# replacing them -- legacy behaviour must stay bit-identical. `mapping` there
+# is taken verbatim (x = HFvLF bin 1..4, y = BvC bin 1..8 -> category code
+# 0..10). Unlike the legacy codes (40-44/50-54), phase4's codes interleave
+# columns (e.g. column x=4 uses 1,3,5,6,7,8,9,10 while x=2/x=3 use 2/4), so
+# they don't admit the same simple ">=threshold"/contiguous-range WP cuts in
+# general.
+_mapping_phase4 = {
+    1: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0},
+    2: {1: 2, 2: 2, 3: 2, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2},
+    3: {1: 4, 2: 4, 3: 4, 4: 4, 5: 4, 6: 4, 7: 4, 8: 4},
+    4: {1: 1, 2: 3, 3: 5, 4: 6, 5: 7, 6: 8, 7: 9, 8: 10},
+}
 _jet_pt_bins = [
     (25, 35),
     (35, 50),
@@ -737,6 +752,35 @@ btag_wp_dict = {
                 "mapping": _mapping,
                 "b": _b2D,
                 "c": _c2D,
+                "jet_pt_bins": _jet_pt_bins,
+            },
+        },
+        # Phase4 category scheme (SFbc-2D/OptimizedWP study, results/
+        # phase4_scheme_NoPIDParT.json), added alongside the entry above --
+        # same underlying HFvLF/BvC scores, different category boundaries and
+        # mapping. HFvLF cuts are unchanged from legacy; 3 of 7 BvC cuts move.
+        "NoPIDParTAK4_phase4": {
+            "2D": {
+                "HFvLF": np.array([0.000, 0.134, 0.297, 0.729, 1.000]),
+                "BvC": np.array(
+                    [
+                        0.000,
+                        0.035,
+                        0.095,
+                        0.22515727366719923,
+                        0.29954950677023995,
+                        0.9006733695665995,
+                        0.992,
+                        0.999,
+                        1.000,
+                    ]
+                ),
+                "mapping": _mapping_phase4,
+                # No "b"/"c" single-WP entries: the phase4 study fits all 11
+                # categories directly (SFbc-2D writeFlavCards.py --sf-structure)
+                # and never derived L/M/T cuts on this scheme. Inventing them
+                # here would hand callers of btag_wp(..., "2Db"/"2Dc", ...) an
+                # uncalibrated working point that looks official.
                 "jet_pt_bins": _jet_pt_bins,
             },
         },

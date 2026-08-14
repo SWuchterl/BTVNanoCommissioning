@@ -4,6 +4,56 @@ from BTVNanoCommissioning.helpers.func import flatten
 from .hist_helpers import get_hist_collections, get_axes_collections
 
 
+def _fill_sf2d_histograms(output, seljets, genflavor, weight, syst):
+    """Fill the SF-fit template histograms (histograms/sf2d.py): tag category
+    x jet pT x SV variable, once per (2D scheme, SV variant) combination
+    present in `output`. Both `seljets` and `genflavor` are already jagged
+    per-jet (one entry per SelJet), so no broadcasting is needed for those --
+    only `weight` (one entry per event) needs broadcasting up to per-jet.
+
+    An svmass template is filled only where one was booked, which is the
+    channel's own declaration that SelJet_svmass is trustworthy there (see
+    histograms/sf2d.py). Jets with no matched SV carry svmass = -1, which
+    falls outside the [0,10] GeV axis range and so is naturally excluded.
+    """
+    flat_pt = flatten(seljets.pt)
+    if len(flat_pt) == 0:
+        return
+    flat_flav = flatten(genflavor)
+    flat_weight = flatten(ak.broadcast_arrays(weight, seljets.pt)[0])
+    flat_syst = np.full(len(flat_pt), syst[0])
+
+    for scheme, branch in (
+        ("legacy", "btagNoPIDParTAK42Dbin"),
+        ("phase4", "btagNoPIDParTAK4_phase42Dbin"),
+    ):
+        if branch not in seljets.fields:
+            continue
+        flat_tagcat = flatten(seljets[branch])
+
+        nsv_name = f"sf2d_{scheme}_nSVs"
+        if nsv_name in output and "nSVs" in seljets.fields:
+            output[nsv_name].fill(
+                syst=flat_syst,
+                flav=flat_flav,
+                tagcat=flat_tagcat,
+                pt=flat_pt,
+                nSVs=flatten(seljets.nSVs),
+                weight=flat_weight,
+            )
+
+        svmass_name = f"sf2d_{scheme}_svmass"
+        if svmass_name in output and "svmass" in seljets.fields:
+            output[svmass_name].fill(
+                syst=flat_syst,
+                flav=flat_flav,
+                tagcat=flat_tagcat,
+                pt=flat_pt,
+                svmass=flatten(seljets.svmass),
+                weight=flat_weight,
+            )
+
+
 def histogrammer(
     jet_fields=None,
     obj_list=[],
@@ -636,6 +686,15 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
                 flat_flav,
                 flatten(pruned_ev.j2ll_dphi),
                 weight=flatten(ak.broadcast_arrays(weight, pruned_ev.j2ll_dphi)[0]),
+            )
+
+        # SF-fit templates (Task A4/histograms/sf2d.py), shared by every
+        # workflow that calls histo_writer (DY, ttdilep, ...). W+c fills
+        # these itself alongside its other inline histograms instead, since
+        # it doesn't go through histo_writer.
+        if any(k.startswith("sf2d_") for k in output.keys()):
+            _fill_sf2d_histograms(
+                output, pruned_ev.SelJet, genflavor, weight, syst
             )
 
     return output

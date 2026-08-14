@@ -157,6 +157,13 @@ def get_discriminators():
         "btagNoPIDParTAK4HFvLF_pt90to120",
         "btagNoPIDParTAK4HFvLF_pt120toinf",
         "btagNoPIDParTAK4HFvLFt",
+        "btagNoPIDParTAK4_phase42Dbin",
+        "btagNoPIDParTAK4_phase42Dbin_pt25to35",
+        "btagNoPIDParTAK4_phase42Dbin_pt35to50",
+        "btagNoPIDParTAK4_phase42Dbin_pt50to70",
+        "btagNoPIDParTAK4_phase42Dbin_pt70to90",
+        "btagNoPIDParTAK4_phase42Dbin_pt90to120",
+        "btagNoPIDParTAK4_phase42Dbin_pt120toinf",
         ## Negative tagger
         "btagNegDeepFlavB",
         "btagNegDeepFlavB_b",

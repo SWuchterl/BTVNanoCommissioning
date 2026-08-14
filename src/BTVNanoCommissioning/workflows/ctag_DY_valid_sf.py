@@ -92,6 +92,7 @@ class NanoProcessor(processor.ProcessorABC):
         njet_hist = 1
         if "2D" in self.selMod:
             hists.append("DY_2D")
+            hists.append("SF2D")
             # also histogram jet1, jet2 (with tagging categories) so they
             # can be used as additional categories in the global SF fit
             obj_list = obj_list + ["jet1", "jet2"]
@@ -105,6 +106,9 @@ class NanoProcessor(processor.ProcessorABC):
                     hist_collections=hists,
                     include_m=isMu,
                     njet=njet_hist,
+                    # DY is the only channel where SelJet_svmass is valid in the
+                    # current trees; see histograms/sf2d.py.
+                    sf2d_svmass=True,
                 )
             else:
                 output = histogrammer(

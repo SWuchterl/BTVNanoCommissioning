@@ -168,7 +168,17 @@ def _get_discriminators(axes, **kwargs):
             "Res": Hist.axis.Regular(40, 0, 1, name="discr", label=d),
             "Corr": Hist.axis.Regular(40, 0, 2, name="discr", label=d),
             "2Dbin": Hist.axis.IntCategory(
-                [0, 40, 41, 42, 43, 44, 50, 51, 52, 53, 54], name="discr", label=d
+                # phase4 categories (SFbc-2D/OptimizedWP) use dense codes
+                # 0..10; legacy taggers use the sparse 40s/50s codes. Select
+                # by branch name so phase4 values aren't silently dropped
+                # into the (unlisted) overflow of the legacy axis.
+                (
+                    list(range(11))
+                    if "_phase4" in d
+                    else [0, 40, 41, 42, 43, 44, 50, 51, 52, 53, 54]
+                ),
+                name="discr",
+                label=d,
             ),
         }
 

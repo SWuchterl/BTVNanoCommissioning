@@ -109,7 +109,7 @@ class NanoProcessor(processor.ProcessorABC):
             output = histogrammer(
                 events.Jet.fields,
                 obj_list=["hl", "soft_l", "MET", "dilep", "mujet"],
-                hist_collections=["common", "fourvec", "Wc"],
+                hist_collections=["common", "fourvec", "Wc", "SF2D"],
                 include_nmujet=True,
                 include_nsoftmu=True,
                 include_osss=True,
@@ -158,12 +158,22 @@ class NanoProcessor(processor.ProcessorABC):
         ## Lepton cuts
         if isMu:
             # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
-            if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
+            if self._campaign in [
+                "Summer24",
+                "CustomSummer24",
+                "Winter25",
+                "Prompt25",
+            ]:  # NanoAODv15
                 iso_lep = events.Muon[(events.Muon.pt > 26) & mu_promptmvaid(events)]
             else:
                 iso_lep = events.Muon[(events.Muon.pt > 26) & mu_idiso(events)]
         elif isEle:
-            if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
+            if self._campaign in [
+                "Summer24",
+                "CustomSummer24",
+                "Winter25",
+                "Prompt25",
+            ]:  # NanoAODv15
                 iso_lep = events.Electron[
                     (events.Electron.pt > 32) & ele_promptmvaid(events, self._campaign)
                 ]
@@ -308,11 +318,21 @@ class NanoProcessor(processor.ProcessorABC):
         # )
 
         ## Dilepton veto
-        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in [
+            "Summer24",
+            "CustomSummer24",
+            "Winter25",
+            "Prompt25",
+        ]:  # NanoAODv15
             dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_promptmvaid(events)]
         else:
             dilep_mu = events.Muon[(events.Muon.pt > 12) & mu_idiso(events)]
-        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in [
+            "Summer24",
+            "CustomSummer24",
+            "Winter25",
+            "Prompt25",
+        ]:  # NanoAODv15
             dilep_ele = events.Electron[
                 (events.Electron.pt > 15) & ele_promptmvaid(events, self._campaign)
             ]
@@ -777,6 +797,32 @@ class NanoProcessor(processor.ProcessorABC):
             output["jetl_dphi"].fill(
                 syst, smflav, osss, flatten(jetl_dphi[event_level]), weight=weight
             )
+
+            # SF-fit templates (histograms/sf2d.py): tag category x jet pT x
+            # nSVs, filled with OS/SS kept as separate "osss" categories
+            # (never subtracted -- SFbc-2D/OptimizedWP/CLAUDE.md settled
+            # question 7). svmass is not filled here: it's only valid in the
+            # DY channels in the current trees, see the same note.
+            muon_jet = pruned_ev.MuonJet
+            for scheme, branch in (
+                ("legacy", "btagNoPIDParTAK42Dbin"),
+                ("phase4", "btagNoPIDParTAK4_phase42Dbin"),
+            ):
+                nsv_name = f"sf2d_{scheme}_nSVs"
+                if (
+                    nsv_name in output
+                    and branch in muon_jet.fields
+                    and "nSVs" in muon_jet.fields
+                ):
+                    output[nsv_name].fill(
+                        syst=syst,
+                        flav=smflav,
+                        osss=osss,
+                        tagcat=flatten(muon_jet[branch]),
+                        pt=flatten(muon_jet.pt),
+                        nSVs=flatten(muon_jet.nSVs),
+                        weight=weight,
+                    )
 
         #######################
         #  Create root files  #

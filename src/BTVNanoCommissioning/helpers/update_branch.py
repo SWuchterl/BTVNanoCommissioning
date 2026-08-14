@@ -422,55 +422,70 @@ def missing_branch(events, campaign=None):
                 ]
                 events.Jet = update(events.Jet, update_map)
 
-        bin2d_name = f"btag{tagger}2Dbin"
-        if (
-            not hasattr(events.Jet, bin2d_name)
-            and hasattr(events.Jet, hfvlf_name)
-            and hasattr(events.Jet, bvc_name)
-            # 2D WP boundaries aren't calibrated for every tagger (e.g.
-            # NoPIDParTAK4 doesn't have any yet) -- skip rather than KeyError.
-            and tagger in btag_wp_dict.get(campaign, {})
-        ):
-            jets = events.Jet
-            hfvlf = ak.flatten(jets[hfvlf_name])
-            bvc = ak.flatten(jets[bvc_name])
-            nj = ak.num(jets)
+        # 2Dbin variants sharing this tagger's raw HFvLF/BvC scores: the
+        # tagger's own (legacy) WP boundaries, plus the phase4 scheme for
+        # NoPIDParTAK4 (SFbc-2D/OptimizedWP). Same hfvlf/bvc branches, just a
+        # different btag_wp_dict entry (cuts + mapping) and output branch name.
+        wp_keys = [tagger]
+        if tagger == "NoPIDParTAK4":
+            wp_keys.append("NoPIDParTAK4_phase4")
 
-            ihfvlf = np.digitize(hfvlf, btag_wp_dict[campaign][tagger]["2D"]["HFvLF"])
-            ibvc = np.digitize(bvc, btag_wp_dict[campaign][tagger]["2D"]["BvC"])
-
-            mapping_arr = _get_2d_mapping_array(campaign, tagger)
-            ihfvlf_idx = np.clip(ihfvlf, 0, mapping_arr.shape[0] - 1)
-            ibvc_idx = np.clip(ibvc, 0, mapping_arr.shape[1] - 1)
-            bin2d_vals = np.where(hfvlf == -1, -1, mapping_arr[ihfvlf_idx, ibvc_idx])
-
-            jets[bin2d_name] = ak.unflatten(bin2d_vals, nj)
-
-            for lo, hi in (
-                (25.0, 35.0),
-                (35.0, 50.0),
-                (50.0, 70.0),
-                (70.0, 90.0),
-                (90.0, 120.0),
+        for wp_key in wp_keys:
+            bin2d_name = f"btag{wp_key}2Dbin"
+            if (
+                not hasattr(events.Jet, bin2d_name)
+                and hasattr(events.Jet, hfvlf_name)
+                and hasattr(events.Jet, bvc_name)
+                # 2D WP boundaries aren't calibrated for every tagger (e.g.
+                # NoPIDParTAK4 doesn't have any yet) -- skip rather than KeyError.
+                and wp_key in btag_wp_dict.get(campaign, {})
             ):
-                jets[f"{bin2d_name}_pt{int(lo)}to{int(hi)}"] = ak.where(
-                    (jets.pt < lo) | (jets.pt >= hi),
+                jets = events.Jet
+                hfvlf = ak.flatten(jets[hfvlf_name])
+                bvc = ak.flatten(jets[bvc_name])
+                nj = ak.num(jets)
+
+                ihfvlf = np.digitize(
+                    hfvlf, btag_wp_dict[campaign][wp_key]["2D"]["HFvLF"]
+                )
+                ibvc = np.digitize(bvc, btag_wp_dict[campaign][wp_key]["2D"]["BvC"])
+
+                mapping_arr = _get_2d_mapping_array(campaign, wp_key)
+                ihfvlf_idx = np.clip(ihfvlf, 0, mapping_arr.shape[0] - 1)
+                ibvc_idx = np.clip(ibvc, 0, mapping_arr.shape[1] - 1)
+                bin2d_vals = np.where(
+                    hfvlf == -1, -1, mapping_arr[ihfvlf_idx, ibvc_idx]
+                )
+
+                jets[bin2d_name] = ak.unflatten(bin2d_vals, nj)
+
+                for lo, hi in (
+                    (25.0, 35.0),
+                    (35.0, 50.0),
+                    (50.0, 70.0),
+                    (70.0, 90.0),
+                    (90.0, 120.0),
+                ):
+                    jets[f"{bin2d_name}_pt{int(lo)}to{int(hi)}"] = ak.where(
+                        (jets.pt < lo) | (jets.pt >= hi),
+                        -2,
+                        jets[bin2d_name],
+                    )
+                jets[f"{bin2d_name}_pt120toinf"] = ak.where(
+                    jets.pt < 120.0,
                     -2,
                     jets[bin2d_name],
                 )
-            jets[f"{bin2d_name}_pt120toinf"] = ak.where(
-                jets.pt < 120.0,
-                -2,
-                jets[bin2d_name],
-            )
 
-            update_map = {bin2d_name: jets[bin2d_name]}
-            for lo, hi in ((25, 35), (35, 50), (50, 70), (70, 90), (90, 120)):
-                update_map[f"{bin2d_name}_pt{lo}to{hi}"] = jets[
-                    f"{bin2d_name}_pt{lo}to{hi}"
+                update_map = {bin2d_name: jets[bin2d_name]}
+                for lo, hi in ((25, 35), (35, 50), (50, 70), (70, 90), (90, 120)):
+                    update_map[f"{bin2d_name}_pt{lo}to{hi}"] = jets[
+                        f"{bin2d_name}_pt{lo}to{hi}"
+                    ]
+                update_map[f"{bin2d_name}_pt120toinf"] = jets[
+                    f"{bin2d_name}_pt120toinf"
                 ]
-            update_map[f"{bin2d_name}_pt120toinf"] = jets[f"{bin2d_name}_pt120toinf"]
-            events.Jet = update(events.Jet, update_map)
+                events.Jet = update(events.Jet, update_map)
 
     if hasattr(events, "METFixEE2017"):
         events.MET = events.METFixEE2017

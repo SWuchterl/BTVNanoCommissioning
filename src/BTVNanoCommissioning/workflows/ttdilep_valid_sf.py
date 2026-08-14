@@ -79,14 +79,16 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Create histograms
         objs = ["mu", "ele", "jet0", "jet1"]
+        hist_collections = ["common", "fourvec", "ttdilep"]
         if self.selMod == "ttdilep_sf_2D":
             objs.append("MET")
+            hist_collections.append("SF2D")
         output = {}
         if not self.noHist:
             output = histogrammer(
                 events.Jet.fields,
                 obj_list=objs,
-                hist_collections=["common", "fourvec", "ttdilep"],
+                hist_collections=hist_collections,
                 njet=2,
             )
 
@@ -134,7 +136,12 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Muon cuts
         # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
-        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in [
+            "Summer24",
+            "CustomSummer24",
+            "Winter25",
+            "Prompt25",
+        ]:  # NanoAODv15
             events.Muon = events.Muon[(events.Muon.pt > 25) & mu_promptmvaid(events)]
         else:
             events.Muon = events.Muon[(events.Muon.pt > 25) & mu_idiso(events)]
@@ -143,7 +150,12 @@ class NanoProcessor(processor.ProcessorABC):
 
         ## Electron cuts
         # electron twiki: https://twiki.cern.ch/twiki/bin/viewauth/CMS/CutBasedElectronIdentificationRun2
-        if self._campaign in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:  # NanoAODv15
+        if self._campaign in [
+            "Summer24",
+            "CustomSummer24",
+            "Winter25",
+            "Prompt25",
+        ]:  # NanoAODv15
             events.Electron = events.Electron[
                 (events.Electron.pt > 25) & ele_promptmvaid(events, self._campaign)
             ]
