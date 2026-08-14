@@ -31,6 +31,8 @@ def campaign_map():
         if "Run3" in subdirs[i]:
             if "25Prompt" in subdirs[i]:
                 dirnames["Prompt25"] = subdirs[i]
+            elif "26Prompt" in subdirs[i]:
+                dirnames["Prompt26"] = subdirs[i]
             else:
                 dirnames[subdirs[i].split("-")[2]] = subdirs[i]
         elif "Run2" in subdirs[i]:
