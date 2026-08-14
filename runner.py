@@ -3,6 +3,8 @@ import sys
 import json
 import argparse
 import time
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
@@ -633,23 +635,32 @@ if __name__ == "__main__":
     # Execute
     if args.executor in ["futures", "iterative", "standalone_condor"]:
         if args.executor == "iterative":
-            _exec = processor.iterative_executor
+            _exec = processor.IterativeExecutor(workers=args.workers)
         else:
-            _exec = processor.futures_executor
+            # ProcessPoolExecutor's default "fork" start method forks worker
+            # processes after uproot/XRootD may already hold open remote-file
+            # connections in this process; the forked worker can then hang
+            # indefinitely closing/using that inherited state. "spawn" starts
+            # each worker as a fresh interpreter instead, avoiding that.
+            _exec = processor.FuturesExecutor(
+                pool=ProcessPoolExecutor(
+                    max_workers=args.workers,
+                    mp_context=multiprocessing.get_context("spawn"),
+                )
+            )
         if args.executor != "standalone_condor":
-            output = processor.run_uproot_job(
+            run = processor.Runner(
+                executor=_exec,
+                schema=PFNanoAODSchema,
+                skipbadfiles=args.skipbadfiles,
+                xrootdtimeout=900,
+                chunksize=args.chunk,
+                maxchunks=args.max,
+            )
+            output = run(
                 sample_dict,
                 treename="Events",
                 processor_instance=processor_instance,
-                executor=_exec,
-                executor_args={
-                    "skipbadfiles": args.skipbadfiles,
-                    "schema": PFNanoAODSchema,
-                    "workers": args.workers,
-                    "xrootdtimeout": 900,
-                },
-                chunksize=args.chunk,
-                maxchunks=args.max,
             )
 
         ## standalone condor from https://github.com/cms-btv-pog/BTVNanoCommissioning/blob/9edb9ed6bb0b28730b8de9e5aa1142ec4fdf74b7/condor/submitter.py
@@ -989,36 +1000,26 @@ if __name__ == "__main__":
 
         dfk = parsl.load(htex_config)
         if not splitjobs:
-            output = processor.run_uproot_job(
-                sample_dict,
-                treename="Events",
-                processor_instance=processor_instance,
-                executor=processor.parsl_executor,
-                executor_args={
-                    "skipbadfiles": args.skipbadfiles,
-                    "schema": PFNanoAODSchema,
-                    "config": None,
-                },
-                chunksize=args.chunk,
-                maxchunks=args.max,
-            )
+            _exec = processor.ParslExecutor(config=None)
         else:
-            output = processor.run_uproot_job(
-                sample_dict,
-                treename="Events",
-                processor_instance=processor_instance,
-                executor=processor.parsl_executor,
-                executor_args={
-                    "skipbadfiles": args.skipbadfiles,
-                    "schema": PFNanoAODSchema,
-                    "merging": True,
-                    "merges_executors": ["merge"],
-                    "jobs_executors": ["run"],
-                    "config": None,
-                },
-                chunksize=args.chunk,
-                maxchunks=args.max,
+            _exec = processor.ParslExecutor(
+                merging=True,
+                merges_executors=["merge"],
+                jobs_executors=["run"],
+                config=None,
             )
+        run = processor.Runner(
+            executor=_exec,
+            schema=PFNanoAODSchema,
+            skipbadfiles=args.skipbadfiles,
+            chunksize=args.chunk,
+            maxchunks=args.max,
+        )
+        output = run(
+            sample_dict,
+            treename="Events",
+            processor_instance=processor_instance,
+        )
     elif "dask" in args.executor:
         from dask_jobqueue import SLURMCluster, HTCondorCluster
         from distributed import Client
@@ -1104,19 +1105,18 @@ if __name__ == "__main__":
             client.wait_for_workers(1)
         with performance_report(filename="dask-report.html"):
             if args.executor != "dask/lxplus":
-                output = processor.run_uproot_job(
+                _exec = processor.DaskExecutor(client=client, retries=args.retries)
+                run = processor.Runner(
+                    executor=_exec,
+                    schema=PFNanoAODSchema,
+                    skipbadfiles=args.skipbadfiles,
+                    chunksize=args.chunk,
+                    maxchunks=args.max,
+                )
+                output = run(
                     sample_dict,
                     treename="Events",
                     processor_instance=processor_instance,
-                    executor=processor.dask_executor,
-                    executor_args={
-                        "client": client,
-                        "skipbadfiles": args.skipbadfiles,
-                        "schema": PFNanoAODSchema,
-                        "retries": args.retries,
-                    },
-                    chunksize=args.chunk,
-                    maxchunks=args.max,
                 )
 
             else:
@@ -1141,19 +1141,20 @@ if __name__ == "__main__":
                             and sindex > int(args.index.split(",")[2])
                         ):
                             break
-                        output = processor.run_uproot_job(
+                        _exec = processor.DaskExecutor(
+                            client=client, retries=args.retries
+                        )
+                        run = processor.Runner(
+                            executor=_exec,
+                            schema=PFNanoAODSchema,
+                            skipbadfiles=args.skipbadfiles,
+                            chunksize=args.chunk,
+                            maxchunks=args.max,
+                        )
+                        output = run(
                             splitted,
                             treename="Events",
                             processor_instance=processor_instance,
-                            executor=processor.dask_executor,
-                            executor_args={
-                                "client": client,
-                                "skipbadfiles": args.skipbadfiles,
-                                "schema": PFNanoAODSchema,
-                                "retries": args.retries,
-                            },
-                            chunksize=args.chunk,
-                            maxchunks=args.max,
                         )
                         if args.noHist == False:
                             save(
