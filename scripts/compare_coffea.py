@@ -120,6 +120,14 @@ def compare_coffea_file(baseline_path, current_path, rtol, atol):
             only = "current" if ds not in base else "baseline"
             problems.append(f"[{ds}] dataset only present in {only}")
             continue
+        if not hasattr(base[ds], "keys") or not hasattr(curr[ds], "keys"):
+            # BTA_producer's accumulator is {dataset: <event count>} -- a bare
+            # scalar per dataset, not a {key: hist/array} dict like every
+            # other workflow.
+            msg = compare_scalar(base[ds], curr[ds], rtol, atol)
+            if msg:
+                problems.append(f"[{ds}] {msg}")
+            continue
         for key in sorted(set(base[ds]) | set(curr[ds])):
             if key not in base[ds] or key not in curr[ds]:
                 only = "current" if key not in base[ds] else "baseline"
@@ -168,8 +176,11 @@ def compare_root_file(baseline_path, current_path, rtol, atol):
                 problems.append(f"[{key}] tree/object only present in {only}")
                 continue
             tb, tc = fb[key], fc[key]
-            if not hasattr(tb, "keys"):
-                continue  # not a TTree (e.g. a histogram/other object); skip
+            if not hasattr(tb, "num_entries"):
+                # not a TTree -- e.g. a histogram, or (BTA_producer's output
+                # nests its tree in a "btagana" TDirectory) a directory, which
+                # also has .keys() and would otherwise be misread as branches.
+                continue
             branches = set(tb.keys()) | set(tc.keys())
             for br in sorted(branches):
                 if br not in tb.keys() or br not in tc.keys():

@@ -66,12 +66,13 @@ class NanoProcessor(processor.ProcessorABC):
             dirname += "_addPFMuons"
         if self.isSyst:
             fname = "systematic/" + fname
-        checkf = os.popen(
-            f"gfal-ls root://eoscms.cern.ch//eos/cms/store/group/phys_btag/milee/{dirname}/{self._campaign.replace('Run3','')}/{fname}"
-        ).read()
-        if len(checkf) > 0:
-            print("skip ", checkf)
-            return {dataset: len(events)}
+        if not os.environ.get("BTA_LOCAL_OUTPUT"):
+            checkf = os.popen(
+                f"gfal-ls root://eoscms.cern.ch//eos/cms/store/group/phys_btag/milee/{dirname}/{self._campaign.replace('Run3','')}/{fname}"
+            ).read()
+            if len(checkf) > 0:
+                print("skip ", checkf)
+                return {dataset: len(events)}
 
         if "JME" in self.SF_map.keys() or "jetveto" in self.SF_map.keys():
             shifts = JME_shifts(
@@ -1146,10 +1147,15 @@ class NanoProcessor(processor.ProcessorABC):
             output["DHadron"] = DHadron
             output["Genlep"] = Genlep
             output["GenV0"] = GenV0
-        os.system(f"mkdir -p {dataset}")
         fname = f"{dataset}/{events.metadata['filename'].split('/')[-1].replace('.root','')}_{int(events.metadata['entrystop']/self.chunksize)}.root"
         if self.isSyst:
             fname = "systematic/" + fname
+        local_dir = os.environ.get("BTA_LOCAL_OUTPUT")
+        if local_dir:
+            fname = f"{local_dir}/{fname}"
+            os.system(f"mkdir -p {local_dir}/{dataset}")
+        else:
+            os.system(f"mkdir -p {dataset}")
         dirname = "BTA"
         if self.addAllTracks:
             dirname += "_addAllTracks"
@@ -1166,10 +1172,11 @@ class NanoProcessor(processor.ProcessorABC):
                         b_nest[n] = ak.packed(ak.without_parameters(output[bname][n]))
                     output_root[bname] = ak.zip(b_nest)
             fout["btagana/ttree"] = output_root
-        os.system(
-            f"xrdcp -p --silent {fname} root://eoscms.cern.ch//eos/cms/store/group/phys_btag/milee/{dirname}/{self._campaign.replace('Run3','')}/{fname}"
-        )
-        os.system(f"rm {fname}")
+        if not local_dir:
+            os.system(
+                f"xrdcp -p --silent {fname} root://eoscms.cern.ch//eos/cms/store/group/phys_btag/milee/{dirname}/{self._campaign.replace('Run3','')}/{fname}"
+            )
+            os.system(f"rm {fname}")
 
         return {dataset: len(events)}
 

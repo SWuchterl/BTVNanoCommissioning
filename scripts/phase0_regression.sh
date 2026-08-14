@@ -2,10 +2,12 @@
 # Phase 0 regression check (docs/modernization_plan.md).
 #
 # Runs 2D_mu_Wc_sf and 2D_emu_ttdilep_sf locally (iterative executor) over the
-# small test filesets already used by SFbc-2D/01_test_workflows.sh, then diffs
-# the resulting .coffea histograms bin-by-bin (scripts/compare_coffea.py)
-# against a stored baseline. Run this before/after any change to a hot path
-# that touches physics output (weight_manager, btagSFs, histo_writter, ...).
+# small test filesets already used by SFbc-2D/01_test_workflows.sh, plus
+# BTA_addPFMuons/BTA_addAllTracks over metadata/test_bta_run3.json, then diffs
+# the resulting .coffea histograms and ROOT ntuples bin-by-bin
+# (scripts/compare_coffea.py) against a stored baseline. Run this before/after
+# any change to a hot path that touches physics output (weight_manager,
+# btagSFs, histo_writter, BTA_helper's cumsum()/calc_ip_vector(), ...).
 #
 # Usage:
 #   scripts/phase0_regression.sh baseline   # (re)create the reference snapshot
@@ -55,12 +57,43 @@ run() {
     -o "hists_${wf}_${tag}.coffea" --outputdir "${outdir}"
 }
 
+# BTA_producer.py: sole consumer of BTA_helper.py's cumsum()/calc_ip_vector(),
+# the most physics-sensitive function in the awkward2 migration
+# (docs/awkward2_migration_plan.md, correction #5) and previously uncovered by
+# this harness. Its normal I/O path xrdcp's output to a shared CERN EOS area
+# and deletes the local copy (BTA_producer.py:1150-1180) -- BTA_LOCAL_OUTPUT=
+# (a directory) keeps the ntuple there instead of shipping/deleting it, and
+# skips the remote "already produced" check that would otherwise
+# short-circuit the run. Note: BTA_producer writes dataset/*.root relative to
+# BTA_LOCAL_OUTPUT rather than under runner.py's --outputdir, unlike every
+# other workflow -- do not `cd` into a subdir to work around this, since
+# workflows/__init__.py imports sf_ttsemilep_tnp.py, which opens
+# helpers/sf_ttsemilep_likelihoods_pas.root via a path relative to the
+# process's cwd at import time and breaks if cwd isn't the repo root.
+# Mirrors BTA_workflow.yml's dataset/campaign/year exactly. addPFMuons covers
+# cumsum() (2 call sites) and calc_ip_vector()'s addPFMuons-only call sites;
+# addAllTracks covers cumsum()'s third call site (JP calibration Track
+# collection).
+run_bta() {
+  local wf="$1"
+  local bta_dir="${outdir}/${wf}"
+  mkdir -p "${bta_dir}"
+  BTA_LOCAL_OUTPUT="${bta_dir}" python runner.py \
+    --workflow "${wf}" --year 2023 --campaign Summer23 \
+    --executor iterative --chunk "${CHUNK}" --max "${MAXCHUNKS}" \
+    --overwrite \
+    --json "metadata/test_bta_run3.json" \
+    -o "hists_${wf}.coffea" --outputdir "${bta_dir}"
+}
+
 # MC: exercise the full systematic hot path (items 1 and 4 in modernization_plan.md).
 run 2D_mu_Wc_sf       test_mc_WJets mc "${ISSYST}"
 run 2D_emu_ttdilep_sf test_mc_TT2L  mc "${ISSYST}"
 # Data: no MC weight systematics, but exercises the lumiMask/real-data path.
 run 2D_mu_Wc_sf       test_data_mu  data False
 run 2D_emu_ttdilep_sf test_data_emu data False
+run_bta BTA_addPFMuons
+run_bta BTA_addAllTracks
 
 if [ "${mode}" == "baseline" ]; then
   # phase0_baseline/ is gitignored (matches hists_*/arrays_*/*.coffea), so this
@@ -75,6 +108,7 @@ if [ "${mode}" == "baseline" ]; then
       echo "dirty: yes (uncommitted changes were present at snapshot time)"
     fi
   } > "${outdir}/PHASE0_BASELINE_COMMIT"
+  pip freeze > "${outdir}/PHASE0_BASELINE_PIP_FREEZE"
 fi
 
 if [ "${mode}" == "check" ]; then
