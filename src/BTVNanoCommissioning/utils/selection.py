@@ -735,6 +735,21 @@ btag_wp_dict = {
                 "jet_pt_bins": _jet_pt_bins,
             },
         },
+        # Trial WPs from SFbc-2D/scripts/make2DWPIntersect.py (is_predefined,
+        # --tagger NoPIDParT); no dedicated single-tag b/c WPs exist for this
+        # tagger, only the 2D scheme.
+        "NoPIDParTAK4": {
+            "2D": {
+                "HFvLF": np.array([0.000, 0.134, 0.297, 0.729, 1.000]),
+                "BvC": np.array(
+                    [0.000, 0.035, 0.095, 0.280, 0.956, 0.992, 0.998, 0.999, 1.000]
+                ),
+                "mapping": _mapping,
+                "b": _b2D,
+                "c": _c2D,
+                "jet_pt_bins": _jet_pt_bins,
+            },
+        },
     },
     "2025_Prompt25": {
         "UParTAK4": {
