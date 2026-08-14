@@ -245,7 +245,7 @@ def uproot_writeable(events, include=["events", "run", "luminosityBlock"]):
             if not no_filter and bname not in include:
                 continue
             ev[bname] = ak.fill_none(
-                ak.packed(ak.without_parameters(events[bname])), -99
+                ak.to_packed(ak.without_parameters(events[bname])), -99
             )
         else:
             b_nest = {}
@@ -284,7 +284,7 @@ def uproot_writeable(events, include=["events", "run", "luminosityBlock"]):
                 if "IdxG" in n:
                     continue
                 b_nest[n] = ak.fill_none(
-                    ak.packed(ak.without_parameters(events[bname][n])), -99
+                    ak.to_packed(ak.without_parameters(events[bname][n])), -99
                 )
             if bool(b_nest):
                 ev[bname] = ak.zip(b_nest)

@@ -79,7 +79,7 @@ def missing_branch(events, campaign=None):
             + events.Jet.btagDeepFlavB_bb
             + events.Jet.btagDeepFlavB_lepb
         )
-        events.Jet = update(
+        events["Jet"] = update(
             events.Jet,
             {"btagDeepFlavB": jets.btagDeepFlavB},
         )
@@ -92,7 +92,7 @@ def missing_branch(events, campaign=None):
         jets["btagDeepFlavC"] = (
             events.Jet.btagDeepFlavCvL / (1.0 - events.Jet.btagDeepFlavCvL)
         ) * (events.Jet.btagDeepFlavG + events.Jet.btagDeepFlavUDS)
-        events.Jet = update(
+        events["Jet"] = update(
             events.Jet,
             {"btagDeepFlavC": jets.btagDeepFlavC},
         )
@@ -103,7 +103,7 @@ def missing_branch(events, campaign=None):
         jets["btagDeepFlavC"] = (
             events.Jet.btagDeepFlavCvB / (1.0 - events.Jet.btagDeepFlavCvB)
         ) * (events.Jet.btagDeepFlavB)
-        events.Jet = update(
+        events["Jet"] = update(
             events.Jet,
             {"btagDeepFlavC": jets.btagDeepFlavC},
         )
@@ -144,7 +144,7 @@ def missing_branch(events, campaign=None):
             ),
             -1,
         )
-        events.Jet = update(
+        events["Jet"] = update(
             events.Jet,
             {
                 "btagDeepFlavCvL": jets.btagDeepFlavCvL,
@@ -156,7 +156,7 @@ def missing_branch(events, campaign=None):
         jets["btagPNetCvNotB"] = (
             jets.btagPNetCvB * jets.btagPNetB / (1.0 - jets.btagPNetB) ** 2
         )
-        events.Jet = update(
+        events["Jet"] = update(
             events.Jet,
             {"btagPNetCvNotB": jets.btagPNetCvNotB},
         )
@@ -169,7 +169,7 @@ def missing_branch(events, campaign=None):
             * jets.btagRobustParTAK4B
             / (1.0 - jets.btagRobustParTAK4B) ** 2
         )
-        events.Jet = update(
+        events["Jet"] = update(
             events.Jet,
             {"btagRobustParTAK4CvNotB": jets.btagRobustParTAK4CvNotB},
         )
@@ -234,7 +234,7 @@ def missing_branch(events, campaign=None):
                     f"{bvc_name}_pt{lo}to{hi}"
                 ]
             update_map[f"{bvc_name}_pt120toinf"] = jets[f"{bvc_name}_pt120toinf"]
-            events.Jet = update(events.Jet, update_map)
+            events["Jet"] = update(events.Jet, update_map)
 
         hfvlf_name = f"btag{tagger}HFvLF"
         if "UParTAK4" in tagger:
@@ -312,7 +312,7 @@ def missing_branch(events, campaign=None):
                 update_map[f"{hfvlf_name}_pt120toinf"] = jets[
                     f"{hfvlf_name}_pt120toinf"
                 ]
-                events.Jet = update(events.Jet, update_map)
+                events["Jet"] = update(events.Jet, update_map)
 
         elif tagger == "NoPIDParTAK4":
             if not hasattr(events.Jet, hfvlf_name) and all(
@@ -364,7 +364,7 @@ def missing_branch(events, campaign=None):
                 update_map[f"{hfvlf_name}_pt120toinf"] = jets[
                     f"{hfvlf_name}_pt120toinf"
                 ]
-                events.Jet = update(events.Jet, update_map)
+                events["Jet"] = update(events.Jet, update_map)
 
         elif tagger in ("DeepFlav", "PNet"):
             if (
@@ -420,7 +420,7 @@ def missing_branch(events, campaign=None):
                 update_map[f"{hfvlf_name}_pt120toinf"] = jets[
                     f"{hfvlf_name}_pt120toinf"
                 ]
-                events.Jet = update(events.Jet, update_map)
+                events["Jet"] = update(events.Jet, update_map)
 
         # 2Dbin variants sharing this tagger's raw HFvLF/BvC scores: the
         # tagger's own (legacy) WP boundaries, plus the phase4 scheme for
@@ -485,10 +485,10 @@ def missing_branch(events, campaign=None):
                 update_map[f"{bin2d_name}_pt120toinf"] = jets[
                     f"{bin2d_name}_pt120toinf"
                 ]
-                events.Jet = update(events.Jet, update_map)
+                events["Jet"] = update(events.Jet, update_map)
 
     if hasattr(events, "METFixEE2017"):
-        events.MET = events.METFixEE2017
+        events["MET"] = events.METFixEE2017
     if hasattr(events.PuppiMET, "ptUnclusteredUp") and not hasattr(
         events.PuppiMET, "MetUnclustEnUpDeltaX"
     ):
@@ -499,7 +499,7 @@ def missing_branch(events, campaign=None):
         met["MetUnclustEnUpDeltaY"] = (met.ptUnclusteredUp - met.pt) * np.sin(
             met.phiUnclusteredUp
         )
-        events.PuppiMET = update(
+        events["PuppiMET"] = update(
             events.PuppiMET,
             {
                 "MetUnclustEnUpDeltaX": met.MetUnclustEnUpDeltaX,

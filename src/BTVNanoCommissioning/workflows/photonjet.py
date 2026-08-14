@@ -141,7 +141,7 @@ class NanoProcessor(processor.ProcessorABC):
 
         event_ph = ak.mask(events.Photon, photon_sel)
         event_ph = ak.pad_none(event_ph, 1)
-        events.Photon = ak.pad_none(events.Photon, 1)
+        events["Photon"] = ak.pad_none(events.Photon, 1)
 
         req_photon = ak.count(event_ph.pt, axis=1) > 0
 
@@ -164,7 +164,7 @@ class NanoProcessor(processor.ProcessorABC):
         jet_sel = jet_sel & jet_puid
         event_jet = ak.mask(events.Jet, jet_sel)
         event_jet = ak.pad_none(event_jet, 1)
-        events.Jet = ak.pad_none(
+        events["Jet"] = ak.pad_none(
             events.Jet, 1
         )  # Make sure that the shape is consistent
 

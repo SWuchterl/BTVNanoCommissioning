@@ -801,7 +801,6 @@ if __name__ == "__main__":
     elif "parsl" in args.executor:
         import parsl
         from parsl.providers import LocalProvider, CondorProvider, SlurmProvider
-        from parsl.channels import LocalChannel
         from parsl.config import Config
         from parsl.executors import HighThroughputExecutor
         from parsl.launchers import SrunLauncher
@@ -815,7 +814,6 @@ if __name__ == "__main__":
                         address=address_by_hostname(),
                         prefetch_capacity=0,
                         provider=SlurmProvider(
-                            channel=LocalChannel(script_dir="logs_parsl"),
                             launcher=SrunLauncher(),
                             mem_per_node=args.memory,
                             max_blocks=(args.scaleout) + 10,
@@ -827,6 +825,10 @@ if __name__ == "__main__":
                     )
                 ],
                 retries=args.retries,
+                # parsl removed Channels (and with them, per-provider
+                # script_dir=); the dataflow kernel now derives
+                # provider.script_dir from Config.run_dir automatically.
+                run_dir="logs_parsl",
             )
             if splitjobs:
                 htex_config = Config(
@@ -836,7 +838,6 @@ if __name__ == "__main__":
                             address=address_by_hostname(),
                             prefetch_capacity=0,
                             provider=SlurmProvider(
-                                channel=LocalChannel(script_dir="logs_parsl"),
                                 launcher=SrunLauncher(),
                                 mem_per_node=args.memory,
                                 max_blocks=(args.scaleout) + 10,
@@ -851,7 +852,6 @@ if __name__ == "__main__":
                             address=address_by_hostname(),
                             prefetch_capacity=0,
                             provider=SlurmProvider(
-                                channel=LocalChannel(script_dir="logs_parsl"),
                                 launcher=SrunLauncher(),
                                 mem_per_node=args.memory,
                                 max_blocks=(args.scaleout) + 10,
@@ -864,6 +864,10 @@ if __name__ == "__main__":
                     ],
                     retries=args.retries,
                     retry_handler=retry_handler,
+                    # parsl removed Channels (and with them, per-provider
+                    # script_dir=); the dataflow kernel now derives
+                    # provider.script_dir from Config.run_dir automatically.
+                    run_dir="logs_parsl",
                 )
         elif "condor" in args.executor:
             if "naf_lite" in args.executor:

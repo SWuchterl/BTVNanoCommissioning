@@ -666,7 +666,7 @@ def get_corr_inputs(input_dict, corr_obj, jersyst="nom"):
                         .replace("Phi", "phi")
                         .replace("Eta", "eta")
                         .replace("Mass", "mass")
-                        .replace("Rho", "rho")
+                        .replace("Rho", "evt_rho")
                         .replace("A", "area")
                     ]
                 )
@@ -815,7 +815,7 @@ def get_MET_corr_keys():
         "muonSubtrDeltaPhi",
         "muonSubtrDeltaEta",
         "Genpt",
-        "rho",
+        "evt_rho",
         "EventID",
         "run",
     ]
@@ -1083,10 +1083,18 @@ def JME_shifts(
                     events.Jet.genJetIdx >= ak.num(events.GenJet)
                 )
                 genjetidx = ak.where(invalid_genjetidx, 0, events.Jet.genJetIdx)
+                # pad GenJet so index 0 is always structurally valid, even for
+                # events with zero GenJets -- ak.where evaluates both branches
+                # eagerly, so events.GenJet[genjetidx] would otherwise raise
+                # on those events despite the result being masked away below
+                # (same gotcha documented in helpers/func.py's SV_link_ragged)
+                padded_genjet_pt = ak.pad_none(events.GenJet.pt, 1, axis=1)
                 nocorrjet["Genpt"] = ak.where(
-                    invalid_genjetidx, -1, events.GenJet[genjetidx].pt
+                    invalid_genjetidx,
+                    -1,
+                    ak.fill_none(padded_genjet_pt[genjetidx], -1),
                 )
-            nocorrjet["rho"] = ak.broadcast_arrays(
+            nocorrjet["evt_rho"] = ak.broadcast_arrays(
                 events.fixedGridRhoFastjetAll, nocorrjet.pt
             )[0]
             nocorrjet["EventID"] = ak.broadcast_arrays(events.event, nocorrjet.pt)[0]
@@ -1102,7 +1110,7 @@ def JME_shifts(
                 nocorrt1metjet["Genpt"] = ak.broadcast_arrays(
                     -1, events.CorrT1METJet.rawPt
                 )[0]
-            nocorrt1metjet["rho"] = ak.broadcast_arrays(
+            nocorrt1metjet["evt_rho"] = ak.broadcast_arrays(
                 events.fixedGridRhoFastjetAll, events.CorrT1METJet.rawPt
             )[0]
             nocorrt1metjet["EventID"] = ak.broadcast_arrays(
@@ -1155,7 +1163,7 @@ def JME_shifts(
                         np.array(t1j["area"]),
                         np.array(t1j["eta_noMuRaw"]),
                         np.array(t1j["pt_noMuRaw"]),
-                        np.array(t1j["rho"]),
+                        np.array(t1j["evt_rho"]),
                     )
                 else:
                     warnings.warn(

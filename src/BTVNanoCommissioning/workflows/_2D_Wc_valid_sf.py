@@ -1,5 +1,6 @@
 import awkward as ak, numpy as np
 from coffea import processor
+from coffea.nanoevents.methods import nanoaod
 
 from BTVNanoCommissioning.utils.correction import (
     load_lumi,
@@ -382,6 +383,17 @@ class NanoProcessor(processor.ProcessorABC):
         trkmet = (
             events.TrkMET if int(self._year) >= 2024 else events.TkMET
         )  # NanoAODv15 uses `TrkMET`
+        # TrkMET isn't registered as a MissingET mixin by NanoAODSchema (unlike
+        # TkMET/MET/PuppiMET), so it has no vector behavior attached; delta_phi
+        # against it used to work anyway via awkward1's looser duck typing, but
+        # the current vector package requires a real registered type. Retag it
+        # explicitly -- same fields, same values, only the type changes. (For
+        # TkMET, already tagged MissingET by the schema, this is a no-op.)
+        trkmet = ak.zip(
+            {"pt": trkmet.pt, "phi": trkmet.phi, "sumEt": trkmet.sumEt},
+            with_name="MissingET",
+            behavior=nanoaod.behavior,
+        )
         metTrkmet_dphi = abs(MET.delta_phi(trkmet))
         req_metTrkmet_dphi = metTrkmet_dphi < 1.0  # & (metTrkmet_dphi >= 0.5)
 

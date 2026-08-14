@@ -142,10 +142,10 @@ class NanoProcessor(processor.ProcessorABC):
             "Winter25",
             "Prompt25",
         ]:  # NanoAODv15
-            events.Muon = events.Muon[(events.Muon.pt > 25) & mu_promptmvaid(events)]
+            events["Muon"] = events.Muon[(events.Muon.pt > 25) & mu_promptmvaid(events)]
         else:
-            events.Muon = events.Muon[(events.Muon.pt > 25) & mu_idiso(events)]
-        events.Muon = ak.pad_none(events.Muon, 1, axis=1)
+            events["Muon"] = events.Muon[(events.Muon.pt > 25) & mu_idiso(events)]
+        events["Muon"] = ak.pad_none(events.Muon, 1, axis=1)
         req_muon = ak.count(events.Muon.pt, axis=1) == 1
 
         ## Electron cuts
@@ -156,19 +156,19 @@ class NanoProcessor(processor.ProcessorABC):
             "Winter25",
             "Prompt25",
         ]:  # NanoAODv15
-            events.Electron = events.Electron[
+            events["Electron"] = events.Electron[
                 (events.Electron.pt > 25) & ele_promptmvaid(events, self._campaign)
             ]
         else:
             if self.selMod == "ttdilep_sf_2D":
-                events.Electron = events.Electron[
+                events["Electron"] = events.Electron[
                     (events.Electron.pt > 25) & ele_mvatightid(events, self._campaign)
                 ]
             else:
-                events.Electron = events.Electron[
+                events["Electron"] = events.Electron[
                     (events.Electron.pt > 25) & ele_cuttightid(events, self._campaign)
                 ]
-        events.Electron = ak.pad_none(events.Electron, 1, axis=1)
+        events["Electron"] = ak.pad_none(events.Electron, 1, axis=1)
         req_ele = ak.count(events.Electron.pt, axis=1) == 1
 
         ## Jet cuts

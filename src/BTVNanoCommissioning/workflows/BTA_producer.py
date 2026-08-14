@@ -639,8 +639,12 @@ class NanoProcessor(processor.ProcessorABC):
             trkj_jetbased.dzFromPV,
             is_3d=True,
         )
-        trkj_jetbased["sign2D"] = ak.values_astype(np.sign(ip2dvec.dot(jet)), int)
-        trkj_jetbased["sign3D"] = ak.values_astype(np.sign(ip3dvec.dot(jet)), int)
+        trkj_jetbased["sign2D"] = ak.values_astype(
+            np.sign(ip2dvec.dot(jet.like(ip2dvec))), int
+        )
+        trkj_jetbased["sign3D"] = ak.values_astype(
+            np.sign(ip3dvec.dot(jet.like(ip3dvec))), int
+        )
         trkj_jetbased["IP3D"] = ip3dvec.p
 
         trkj_jetbased["isHitL1"] = ak.values_astype(
@@ -885,8 +889,8 @@ class NanoProcessor(processor.ProcessorABC):
                 with_name="PtEtaPhiMLorentzVector",
             )
             # use a more consistent ptrel calculation to avoid precision lost (previously using sqrt(ptrack^2 - ptperp^2))
-            trkj_jetbased["ptrel"] = (vec.subtract(jet)).cross(
-                jet
+            trkj_jetbased["ptrel"] = (vec.subtract(jet)).to_Vector3D().cross(
+                jet.to_Vector3D()
             ).p / jet.p  # trk_p * sin(theta(trk, jet))
 
             # flatten jet-based track arrays
@@ -957,8 +961,8 @@ class NanoProcessor(processor.ProcessorABC):
             mu_jetbased = mutrkj_jetbased.mu
 
             # calculate pTrel and other kinematics
-            mu_jetbased["ptrel"] = (mu_jetbased.subtract(jet)).cross(
-                jet
+            mu_jetbased["ptrel"] = (mu_jetbased.subtract(jet)).to_Vector3D().cross(
+                jet.to_Vector3D()
             ).p / jet.p  # mu_p * sin(theta(mu, jet))
             mu_jetbased["ratio"] = mu_jetbased.pt / jet.pt_raw
             mu_jetbased["ratioRel"] = (
@@ -966,7 +970,7 @@ class NanoProcessor(processor.ProcessorABC):
                 / jet.p2
                 * (jet.pt / jet.pt_raw)
             )
-            mu_jetbased["deltaR"] = mu_jetbased.delta_r(jet)
+            mu_jetbased["dRJet"] = mu_jetbased.delta_r(jet)
 
             # correct the impact parameter signs according to the jet direction
             # *note*: The original 2D IP sign is curvature based, obtained from track->dxy(vertex.position()).
@@ -974,15 +978,17 @@ class NanoProcessor(processor.ProcessorABC):
             #              IPTools::signedTransverseImpactParameter(trackref, jet direction, vertex)
             #         The sign is positive if dot(2D IP vector, jet direction) > 0; similar for 3D IP signs
             #         The sign is recomputed to follow the BTA (SoftPFMuonTagInfoProducer) scheme.
+            mu_ip2dvec = calc_ip_vector(
+                mu_jetbased, mu_jetbased.dxy, mu_jetbased.dz, is_3d=False
+            )
+            mu_ip3dvec = calc_ip_vector(
+                mu_jetbased, mu_jetbased.dxy, mu_jetbased.dz, is_3d=True
+            )
             mu_jetbased["ip2dsign_jetref"] = np.sign(
-                calc_ip_vector(
-                    mu_jetbased, mu_jetbased.dxy, mu_jetbased.dz, is_3d=False
-                ).dot(jet)
+                mu_ip2dvec.dot(jet.like(mu_ip2dvec))
             )
             mu_jetbased["ip3dsign_jetref"] = np.sign(
-                calc_ip_vector(
-                    mu_jetbased, mu_jetbased.dxy, mu_jetbased.dz, is_3d=True
-                ).dot(jet)
+                mu_ip3dvec.dot(jet.like(mu_ip3dvec))
             )
 
             # quality
@@ -1018,7 +1024,7 @@ class NanoProcessor(processor.ProcessorABC):
                     "ptrel": ak.fill_none(mu_jetbased_flat.ptrel, -99.0),
                     "ratio": ak.fill_none(mu_jetbased_flat.ratio, -99.0),
                     "ratioRel": ak.fill_none(mu_jetbased_flat.ratioRel, -99.0),
-                    "deltaR": ak.fill_none(mu_jetbased_flat.deltaR, -99.0),
+                    "deltaR": ak.fill_none(mu_jetbased_flat.dRJet, -99.0),
                     "IP": ak.fill_none(
                         mu_jetbased_flat.ip3d * mu_jetbased_flat.ip3dsign_jetref,
                         -99.0,
@@ -1165,12 +1171,30 @@ class NanoProcessor(processor.ProcessorABC):
             output_root = {}
             for bname in output.keys():
                 if not output[bname].fields:
-                    output_root[bname] = ak.packed(ak.without_parameters(output[bname]))
+                    # uproot4 auto-added an "n{branch}" count branch for a
+                    # plain (non-record) jagged array; uproot5 doesn't, so
+                    # write it explicitly to preserve the old ROOT schema.
+                    if output[bname].ndim > 1:
+                        output_root[f"n{bname}"] = ak.num(output[bname], axis=1)
+                    output_root[bname] = ak.to_packed(
+                        ak.without_parameters(output[bname])
+                    )
                 else:
-                    b_nest = {}
+                    # Write each sub-field as its own flat "{bname}_{field}"
+                    # branch (plus an explicit "n{bname}" count branch, only
+                    # for genuinely jagged collections -- e.g. PV is a single
+                    # record per event, not a list) instead of ak.zip-ing
+                    # them into one nested record. uproot5 (unlike uproot4)
+                    # writes a nested record as genuinely nested dotted
+                    # branches ("Jet.pT") rather than auto-flattening it --
+                    # this preserves the original flat ROOT schema so
+                    # downstream readers (SFbc-2D, etc.) don't need to change.
+                    if output[bname].ndim > 1:
+                        output_root[f"n{bname}"] = ak.num(output[bname], axis=1)
                     for n in output[bname].fields:
-                        b_nest[n] = ak.packed(ak.without_parameters(output[bname][n]))
-                    output_root[bname] = ak.zip(b_nest)
+                        output_root[f"{bname}_{n}"] = ak.to_packed(
+                            ak.without_parameters(output[bname][n])
+                        )
             fout["btagana/ttree"] = output_root
         if not local_dir:
             os.system(

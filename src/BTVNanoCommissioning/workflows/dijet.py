@@ -131,10 +131,10 @@ class NanoProcessor(processor.ProcessorABC):
             )
 
         # Redefine triggers to match the jet selection
-        events.Jet = ak.pad_none(events.Jet, 2)
+        events["Jet"] = ak.pad_none(events.Jet, 2)
 
         # Sort the jets by pt
-        events.Jet = events.Jet[ak.argsort(events.Jet.pt, axis=1, ascending=False)]
+        events["Jet"] = events.Jet[ak.argsort(events.Jet.pt, axis=1, ascending=False)]
 
         for trg in triggers:
             events.HLT[trg] = (
@@ -163,7 +163,7 @@ class NanoProcessor(processor.ProcessorABC):
         jet_sel = jet_sel & jet_puid
         event_jet = ak.mask(events.Jet, jet_sel)
         event_jet = ak.pad_none(event_jet, 3)
-        events.Jet = ak.pad_none(
+        events["Jet"] = ak.pad_none(
             events.Jet, 3
         )  # Make sure that the shape is consistent
 
