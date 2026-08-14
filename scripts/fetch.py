@@ -994,6 +994,43 @@ def check_site_completion(site, dataset, xrootd_tools, total_files_count):
         return 0.0
 
 
+def get_origin_sites_for_dataset(dataset, in_ci):
+    """
+    Private (phys03/USER) productions have no Rucio replica records, so the
+    Rucio-backed 'site dataset=...' query always comes back empty for them
+    (dasgoclient just prints a WARNING and gives up). DBS still records which
+    site each block was originally written to (origin_site_name), and for
+    CRAB-submitted private productions that's the single site holding 100%
+    of the dataset. Recover it directly from block metadata instead of
+    falling back to the (slower, load-balanced) global redirector.
+    """
+    if in_ci:
+        query = f'/cms.cern.ch/common/dasgoclient -query="block dataset={dataset} instance=prod/phys03 | grep block.origin_site_name"'
+    else:
+        query = f'dasgoclient -query="block dataset={dataset} instance=prod/phys03 | grep block.origin_site_name"'
+
+    try:
+        result = run_das_command(query)
+    except Exception as e:
+        print(f"Error with origin_site query: {e}")
+        return []
+
+    # dasgoclient pads these lines with trailing whitespace
+    sites = [
+        s.strip()
+        for s in result
+        if s.strip() and not s.startswith(("WARNING", "ERROR"))
+    ]
+    if not sites:
+        return []
+
+    # Most common origin site first (a dataset normally has a single origin site)
+    counts = {}
+    for s in sites:
+        counts[s] = counts.get(s, 0) + 1
+    return sorted(counts, key=counts.get, reverse=True)
+
+
 def check_site_responsiveness(
     site, sites_xrootd_prefix, xrootd_tools, dataset_files=None
 ):
@@ -1369,6 +1406,13 @@ def getFilesFromDas(args):
 
             try:
                 sites = run_das_command(query)
+                # dasgoclient prints a plain "WARNING: No site records found in
+                # Rucio, ..." line to stdout for phys03/USER datasets instead
+                # of returning nothing -- strip that out so it isn't mistaken
+                # for a site name.
+                sites = [
+                    s for s in sites if s and not s.startswith(("WARNING", "ERROR"))
+                ]
                 if sites:
                     if args.verbose:
                         print(f"Found {len(sites)} sites with query: {query}")
@@ -1378,6 +1422,64 @@ def getFilesFromDas(args):
 
         # Fallback to default redirector if no sites found
         if not sites:
+            # Rucio has no replica info for private productions, so try to
+            # recover the block's origin site from DBS before giving up.
+            best_site = None
+            origin_sites = get_origin_sites_for_dataset(dataset, in_ci)
+            if origin_sites:
+                xrootd_tools = check_xrootd_availability()
+                sites_xrootd_prefix = get_xrootd_sites_map()
+                for origin_site in origin_sites:
+                    if origin_site not in sites_xrootd_prefix:
+                        print(
+                            f"WARNING: origin site {origin_site} for '{dataset}' has no XRootD access in our map, skipping"
+                        )
+                        continue
+                    if (
+                        args.blacklist_sites is not None
+                        and origin_site in args.blacklist_sites
+                    ):
+                        continue
+                    if (
+                        args.whitelist_sites is not None
+                        and origin_site not in args.whitelist_sites
+                    ):
+                        continue
+                    if check_site_responsiveness(
+                        origin_site,
+                        sites_xrootd_prefix,
+                        xrootd_tools,
+                        dataset_files=flist,
+                    ):
+                        best_site = origin_site
+                        print(
+                            f"Using origin site {origin_site} for private dataset '{dataset}' (100% complete by construction)"
+                        )
+                        break
+
+            if args.limit is not None:
+                flist = flist[: args.limit]
+
+            if best_site:
+                if best_site in site_url_formats:
+                    redirector = site_url_formats[best_site]["redirector"]
+                    paths = [
+                        f"{redirector}{f.lstrip('/')}" for f in flist if len(f) > 1
+                    ]
+                else:
+                    paths = [
+                        _get_pfn_for_site(f, sites_xrootd_prefix[best_site])
+                        for f in flist
+                        if len(f) > 1
+                    ]
+                validated_paths = [validate_xrootd_path(p) for p in paths]
+                if dsname not in fdict:
+                    fdict[dsname] = validated_paths
+                else:
+                    fdict[dsname].extend(validated_paths)
+                print(f"Added {len(fdict[dsname])} files for dataset {dsname}")
+                continue
+
             print(
                 f"WARNING: No sites found for dataset '{dataset}', using global redirector"
             )
@@ -1389,8 +1491,6 @@ def getFilesFromDas(args):
                 "global": "root://cms-xrd-global.cern.ch/",
             }
             xrd = redirector[args.redirector]
-            if args.limit is not None:
-                flist = flist[: args.limit]
             if dsname not in fdict:
                 fdict[dsname] = [xrd + f for f in flist if len(f) > 1]
             else:
