@@ -1,11 +1,12 @@
-import argparse, glob, os
-import numpy as np
-import awkward as ak
-import uproot
+import argparse, glob, os, subprocess, sys
 
-# Central weight components array_writer() (utils/array_writer.py) writes per event.
-# Their product reconstructs the full nominal Weights().weight() used for histogramming.
-WEIGHT_BRANCHES = ["genWeight", "ttbar_weight", "puwei", "muWeight", "eleWeight", "ftagWeight"]
+# The actual read+add-branches+write is done by the companion ROOT macro (normalizeArray.C),
+# not here: uproot 4.3.7's TTree writer has been observed to silently write malformed baskets
+# for some jagged/vector branches on the uproot.open()+uproot.recreate() round trip this script
+# used to do, even though the same branches read back cleanly beforehand. The macro's native
+# ROOT CloneTree()+Fill() doesn't hit that bug. See normalizeArray.C for the weight branches
+# list and the actual per-event logic.
+_NORMALIZE_MACRO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "normalizeArray.C")
 
 # Integrated luminosity per campaign, in /pb. Kept in sync with SFbc-2D/05_make_templates.sh.
 LUMI_PB = {
@@ -40,56 +41,16 @@ parser.add_argument(
 )
 
 
-def normalize_file(in_file, out_file, lumi_pb, dry_run, step_size="100 MB"):
-    with uproot.open(in_file) as f:
-        if "TotalEventCount" not in f:
-            print(f"WARNING: no TotalEventCount tree in {in_file} (malformed hadd?), skipping")
-            return
-        is_mc = "TotalEventWeight" in f
-        n_total = float(np.sum(f["TotalEventCount"]["TotalEventCount"].array(library="np")))
-        sumw = (
-            float(np.sum(f["TotalEventWeight"]["TotalEventWeight"].array(library="np")))
-            if is_mc
-            else None
-        )
-        if "Events" not in f or f["Events"].num_entries == 0:
-            print(f"WARNING: no selected events in {in_file}, skipping")
-            return
-
-    if is_mc and sumw == 0:
-        raise ValueError(f"sumw is 0 for {in_file}, cannot normalize")
-
-    print(
-        f"{in_file}: {'MC' if is_mc else 'data'}, n_processed={n_total:.0f}"
-        + (f", sumw={sumw:.6g}, lumi={lumi_pb:.6g}/pb" if is_mc else "")
+def normalize_file(in_file, out_file, lumi_pb, dry_run):
+    if not dry_run:
+        os.makedirs(os.path.dirname(out_file), exist_ok=True)
+    macro_call = (
+        f'{_NORMALIZE_MACRO}("{in_file}", "{out_file}", {lumi_pb}, '
+        f'{"true" if dry_run else "false"})'
     )
-    if dry_run:
-        return
-
-    os.makedirs(os.path.dirname(out_file), exist_ok=True)
-    with uproot.recreate(out_file) as fout:
-        first_chunk = True
-        for chunk in uproot.iterate(f"{in_file}:Events", library="ak", step_size=step_size):
-            if is_mc:
-                weight = chunk["xSecWeight"] * (lumi_pb / sumw)
-                for branch in WEIGHT_BRANCHES:
-                    weight = weight * chunk[branch]
-            else:
-                weight = ak.Array(np.ones(len(chunk)))
-            chunk["lumi"] = ak.Array(np.full(len(chunk), lumi_pb))
-            chunk["weight"] = weight
-            # Written as a dict of per-branch arrays, not a single record `ak.Array`: uproot's
-            # tree writer rejects a jagged field (e.g. LHEReweightingWeight) when it's inside a
-            # top-level record array, even though the exact same array writes fine as a branch.
-            branch_dict = {name: chunk[name] for name in chunk.fields}
-            if first_chunk:
-                fout["Events"] = branch_dict
-                first_chunk = False
-            else:
-                fout["Events"].extend(branch_dict)
-        fout["TotalEventCount"] = ak.Array({"TotalEventCount": [n_total]})
-        if is_mc:
-            fout["TotalEventWeight"] = ak.Array({"TotalEventWeight": [sumw]})
+    result = subprocess.run(["root", "-l", "-b", "-q", macro_call])
+    if result.returncode != 0:
+        sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
