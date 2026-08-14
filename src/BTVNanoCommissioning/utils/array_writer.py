@@ -277,7 +277,7 @@ def array_writer(
     # Write to root files
     print("Branches to write:", out_branch)
     outdir = f"{out_dir_base}{processor_class.name}/{systname[0]}/{dataset}/"
-    os.system(f"mkdir -p {outdir}")
+    os.makedirs(outdir, exist_ok=True)
 
     with uproot.recreate(
         f"{outdir}/{nano_event.metadata['filename'].split('/')[-1].replace('.root','')}_{int(nano_event.metadata['entrystop']/processor_class.chunksize)}.root"
