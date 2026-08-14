@@ -179,7 +179,8 @@ class NanoProcessor(processor.ProcessorABC):
             False,
         )
         event_jet = events.Jet[jetsel]
-        req_jets = ak.num(event_jet.pt) >= 2
+        # req_jets = ak.num(event_jet.pt) >= 2
+        req_jets = ak.num(event_jet.pt) == 2
 
         ## Other cuts
         req_opposite_charge = (
@@ -187,6 +188,11 @@ class NanoProcessor(processor.ProcessorABC):
         ) == -1
         req_opposite_charge = ak.fill_none(req_opposite_charge, False)
         req_opposite_charge = ak.flatten(req_opposite_charge)
+
+        ## Dilepton mass cut (reject low-mass DY/quarkonia resonances)
+        dilep_mass = (events.Electron[:, 0:1] + events.Muon[:, 0:1]).mass
+        req_dilep_mass = ak.fill_none(dilep_mass > 20, False)
+        req_dilep_mass = ak.flatten(req_dilep_mass)
 
         ## store jet index for PFCands, create mask on the jet index
         jetindx = ak.mask(ak.local_index(events.Jet.pt), jetsel)
@@ -219,6 +225,7 @@ class NanoProcessor(processor.ProcessorABC):
             & req_ele
             & req_jets
             & req_opposite_charge
+            & req_dilep_mass
             & req_metfilter
         )
         event_level = ak.fill_none(event_level, False)
