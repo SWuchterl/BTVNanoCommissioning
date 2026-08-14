@@ -1,27 +1,4 @@
 correction_config = {
-    "Rereco17_94X": {
-        "default": {
-            "DC": "Cert_314472-325175_13TeV_17SeptEarlyReReco2018ABC_PromptEraD_Collisions18_JSON.txt",
-            "LUM": "94XPUwei_corrections.pkl.gz",
-            "JME": "jec_compiled.pkl.gz",
-            "BTV": {
-                "DeepCSVB": "DeepCSV_94XSF_V5_B_F.csv",
-                "DeepCSVC": "DeepCSV_ctagSF_MiniAOD94X_2017_pTincl_v3_2_interp.root",
-                "DeepJetB": "DeepFlavour_94XSF_V4_B_F.csv",
-                "DeepJetC": "DeepJet_ctagSF_MiniAOD94X_2017_pTincl_v3_2_interp.root",
-            },
-            "EGM": {
-                "ele_Trig TrigSF": "Ele32_L1DoubleEG_TrigSF_vhcc.histo.root",
-                "ele_ID EGamma_SF2D": "ElectronIDSF_94X_MVA80WP.histo.root",
-                "ele_Rereco EGamma_SF2D": "ElectronRecoSF_94X.histo.root",
-            },
-            "MUO": {
-                "mu_ID NUM_TightID_DEN_genTracks_pt_abseta": "RunBCDEF_MuIDSF.histo.root",
-                "mu_ID_low NUM_TightID_DEN_genTracks_pt_abseta": "RunBCDEF_MuIDSF_lowpT.histo.root",
-                "mu_Iso NUM_TightRelIso_DEN_TightIDandIPCut_pt_abseta": "RunBCDEF_MuISOSF.histo.root",
-            },
-        },
-    },
     "2016preVFP-UL": {
         "default": {
             "DC": "Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt",
@@ -165,14 +142,6 @@ correction_config = {
                 "electronSS": "Run2-2018-UL-NanoAODv15",
                 "jetveto": "Run2-2018-UL-NanoAODv15",
             },
-        },
-    },
-    "Winter22Run3": {
-        "default": {
-            "DC": "Cert_Collisions2022_355100_357900_Golden.json",
-            "LUM": "puweight_Winter22Run3.histo.root",
-            "JME": "jec_compiled.pkl.gz",
-            "jetveto": {"Run2022CD jetvetomap": "Winter22Run3_RunCD_v1.histo.root"},
         },
     },
     "Summer22": {

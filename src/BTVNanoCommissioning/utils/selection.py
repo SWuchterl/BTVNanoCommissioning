@@ -168,16 +168,7 @@ def jet_id(events, campaign, max_eta=2.5, min_pt=20):
 
     jetid = ak.values_astype(jetid, bool)
 
-    if campaign == "Rereco17_94X":
-        # Use puId for Run2
-        jetmask = (
-            (events.Jet.pt > min_pt)
-            & (abs(events.Jet.eta) <= max_eta)
-            & (jetid)
-            & ((events.Jet.pt > 50) | (events.Jet.puId >= 7))
-        )
-    else:
-        jetmask = (events.Jet.pt > min_pt) & (abs(events.Jet.eta) <= max_eta) & (jetid)
+    jetmask = (events.Jet.pt > min_pt) & (abs(events.Jet.eta) <= max_eta) & (jetid)
 
     return jetmask
 
@@ -190,7 +181,6 @@ def _ele_etaSC(events, campaign):
     )
 
 
-## FIXME: Electron cutbased Id & MVA ID not exist in Winter22Run3 sample
 def ele_cuttightid(events, campaign):
     ele_etaSC = _ele_etaSC(events, campaign)
     elemask = (

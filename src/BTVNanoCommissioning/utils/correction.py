@@ -22,7 +22,6 @@ except Exception:
 from coffea.lookup_tools import extractor, txt_converters, rochester_lookup
 from coffea.lumi_tools import LumiMask
 from coffea.analysis_tools import Weights
-from coffea.btag_tools import BTagScaleFactor
 
 from BTVNanoCommissioning.helpers.MuonScaRe import (
     pt_resol,
@@ -30,11 +29,7 @@ from BTVNanoCommissioning.helpers.MuonScaRe import (
     pt_resol_var,
     pt_scale_var,
 )
-from BTVNanoCommissioning.helpers.func import (
-    _compile_jec_,
-    _load_jmefactory,
-    campaign_map,
-)
+from BTVNanoCommissioning.helpers.func import campaign_map
 from BTVNanoCommissioning.utils.AK4_parameters import correction_config as config
 
 _TTBAR_REWEIGHT_CACHE = {}
@@ -175,27 +170,13 @@ def _load_SF_impl(year, campaign, selMod="default", syst=False):
                         _btag_path, conf["BTV"][tagger]
                     ) as filename:
                         if "B" in tagger:
-                            if filename.endswith(".json.gz"):
-                                correct_map["btag"] = (
-                                    correctionlib.CorrectionSet.from_file(filename)
-                                )
-                            else:
-                                correct_map["btag"][tagger] = BTagScaleFactor(
-                                    filename,
-                                    BTagScaleFactor.RESHAPE,
-                                    methods="iterativefit,iterativefit,iterativefit",
-                                )
+                            correct_map["btag"] = correctionlib.CorrectionSet.from_file(
+                                filename
+                            )
                         else:
-                            if filename.endswith(".json.gz"):
-                                correct_map["ctag"] = (
-                                    correctionlib.CorrectionSet.from_file(filename)
-                                )
-                            else:
-                                correct_map["ctag"][tagger] = BTagScaleFactor(
-                                    filename,
-                                    BTagScaleFactor.RESHAPE,
-                                    methods="iterativefit,iterativefit,iterativefit",
-                                )
+                            correct_map["ctag"] = correctionlib.CorrectionSet.from_file(
+                                filename
+                            )
 
         ## lepton SFs
         elif SF == "MUO":
@@ -370,23 +351,7 @@ def _load_SF_impl(year, campaign, selMod="default", syst=False):
 
         ## JME corrections
         elif SF == "JME":
-            if "name" in conf["JME"].keys():
-                if not os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{_cvmfs_dir(campaign, 'JMAR')}/latest/jec_compiled_{conf['JME']['name']}.pkl.gz"
-                ):
-                    _compile_jec_(
-                        year,
-                        campaign,
-                        conf["JME"],
-                        f"jec_compiled_{conf['JME']['name']}",
-                    )
-
-                correct_map["JME"] = _load_jmefactory(
-                    year,
-                    campaign,
-                    f"jec_compiled_{conf['JME']['name']}.pkl.gz",
-                )
-            elif "JME_path" in conf and os.path.exists(conf["JME_path"]):
+            if "JME_path" in conf and os.path.exists(conf["JME_path"]):
                 # Custom JME path (e.g. preliminary Puppi JEC for Run 2 NanoAODv15)
                 correct_map["JME"] = correctionlib.CorrectionSet.from_file(
                     conf["JME_path"]
@@ -1614,8 +1579,6 @@ def JME_shifts(
                         jecname = "EF"
                 elif "2016postVFP-UL" == campaign:
                     jecname = "FGH"
-                elif campaign == "Rereco17_94X":
-                    jecname = ""
                 elif campaign == "Summer23":
                     if "v4" in dataset:
                         jecname = "Cv4"

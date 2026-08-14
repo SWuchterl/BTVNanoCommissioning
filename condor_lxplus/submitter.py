@@ -87,8 +87,6 @@ def get_main_parser():
         "--campaign",
         default="Summer23",
         choices=[
-            "Rereco17_94X",
-            "Winter22Run3",
             "Summer22",
             "Summer22EE",
             "Summer23",

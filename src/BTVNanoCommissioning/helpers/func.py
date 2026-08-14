@@ -1,9 +1,6 @@
 import awkward as ak
 import numpy as np
 from coffea import processor
-import os, gzip, importlib, cloudpickle
-from coffea.jetmet_tools import JECStack, CorrectedJetsFactory, CorrectedMETFactory
-from coffea.lookup_tools import extractor
 
 import collections
 
@@ -95,121 +92,6 @@ def _is_rootcompat(a):
         ):
             return True
     return False
-
-
-jec_name_map = {
-    "JetPt": "pt",
-    "JetPhi": "phi",
-    "JetMass": "mass",
-    "JetEta": "eta",
-    "JetA": "area",
-    "ptGenJet": "pt_gen",
-    "ptRaw": "pt_raw",
-    "massRaw": "mass_raw",
-    "Rho": "event_rho",
-    "METpt": "pt",
-    "METphi": "phi",
-    "JetPhi": "phi",
-    "UnClusteredEnergyDeltaX": "MetUnclustEnUpDeltaX",
-    "UnClusteredEnergyDeltaY": "MetUnclustEnUpDeltaY",
-}
-
-
-def _load_jmefactory(year, campaign, jme_compiles):
-    _jet_path = f"BTVNanoCommissioning.data.JME.{campaign}"
-    with importlib.resources.path(_jet_path, jme_compiles) as filename:
-        with gzip.open(filename) as fin:
-            jme_factory = cloudpickle.load(fin)
-    return jme_factory
-
-
-def __jet_factory_factory__(files):
-    ext = extractor()
-    ext.add_weight_sets([f"* * {file}" for file in files])
-    ext.finalize()
-    jec_stack = JECStack(ext.make_evaluator())
-    return CorrectedJetsFactory(jec_name_map, jec_stack)
-
-
-def _jet_factories_(campaign, factory_map):
-    factory_info = {
-        j: __jet_factory_factory__(files=factory_map[j]) for j in factory_map.keys()
-    }
-    return factory_info
-
-
-def _compile_jec_(year, campaign, factory_map, name):
-    # jme stuff not pickleable in coffea
-    import cloudpickle
-
-    # add postfix to txt files
-    update_factory = {}
-    directory_path = f"src/BTVNanoCommissioning/data/JME/{campaign}/"
-    files_in_directory = os.listdir(directory_path)
-    for t in factory_map:
-        if t == "name":
-            continue
-        update_factory[t] = []
-        for f in factory_map[t]:
-            if "Resolution" in f:
-                if not os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jr.txt"
-                ) and os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt"
-                ):
-                    os.system(
-                        f"mv src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jr.txt"
-                    )
-                update_factory[t].append(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jr.txt"
-                )
-            elif "SF" in f:
-                if not os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jersf.txt"
-                ) and os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt"
-                ):
-                    os.system(
-                        f"mv src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jersf.txt"
-                    )
-                update_factory[t].append(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jersf.txt"
-                )
-            elif "Uncertainty" in f:
-                if not os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.junc.txt"
-                ) and os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt"
-                ):
-                    os.system(
-                        f"mv src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt src/BTVNanoCommissioning/data/JME/{campaign}/{f}.junc.txt"
-                    )
-                update_factory[t].append(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.junc.txt"
-                )
-            else:
-                if not os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jec.txt"
-                ) and os.path.exists(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt"
-                ):
-                    os.system(
-                        f"mv src/BTVNanoCommissioning/data/JME/{campaign}/{f}.txt src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jec.txt"
-                    )
-                update_factory[t].append(
-                    f"src/BTVNanoCommissioning/data/JME/{campaign}/{f}.jec.txt"
-                )
-
-    with gzip.open(
-        f"src/BTVNanoCommissioning/data/JME/{campaign}/{name}.pkl.gz", "wb"
-    ) as fout:
-        cloudpickle.dump(
-            {
-                "jet_factory": _jet_factories_(campaign, update_factory),
-                "met_factory": CorrectedMETFactory(jec_name_map),
-            },
-            fout,
-        )
 
 
 def PFCand_link(events, event_level, jetindx):
