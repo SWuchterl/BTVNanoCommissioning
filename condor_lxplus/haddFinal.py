@@ -1,6 +1,15 @@
 import argparse, os
 from glob import glob
 
+# Force hadd's output compression to differ from the input files' (normalizeArrays.py's
+# uproot.recreate default is zlib level 1, i.e. setting 101) so hadd always takes its "slower"
+# full decompress/recompress merge path instead of fast-cloning basket bytes directly.
+# Fast-clone has been observed to silently corrupt jagged/vector branches (e.g. SelJet_phi)
+# written by uproot -- hadd's own exit code stays 0 when this happens, so this is not optional.
+_HADD_COMPRESSION = "-f102"
+
+_VALIDATE_MACRO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "validateMerge.C")
+
 parser = argparse.ArgumentParser(
     description="Merge per-dataset normalized array-output root files (see "
     "condor_lxplus/normalizeArrays.py) into one combined MC.root and one combined data.root "
@@ -16,8 +25,8 @@ parser.add_argument(
     "minor_MC job outputs' hadd_normalized directories",
 )
 parser.add_argument(
-    "--data", nargs="+", required=True, metavar="DIR",
-    help="One or more hadd_normalized directories to merge into data.root",
+    "--data", nargs="*", default=[], metavar="DIR",
+    help="Zero or more hadd_normalized directories to merge into data.root (omit to merge MC only)",
 )
 parser.add_argument(
     "-f", "--force", action="store_true",
@@ -42,15 +51,23 @@ for syst in systlist:
     data_files = [f for d in args.data for f in glob(f"{d}/{syst}/*.root")]
 
     if mc_files:
-        cmdlist.append(
-            f"hadd -v 0 -k {'-f ' if args.force else ''}{newoutdir}/MC.root "
+        mc_target = f"{newoutdir}/MC.root"
+        hadd_cmd = (
+            f"hadd -v 0 -k {_HADD_COMPRESSION} {'-f ' if args.force else ''}{mc_target} "
             + " ".join(mc_files)
         )
+        validate_cmd = f'root -l -b -q \'{_VALIDATE_MACRO}("{mc_target}")\''
+        # If either hadd or the validation crashes/fails, remove the target instead of
+        # leaving a broken or silently-corrupt file where a valid merge is expected.
+        cmdlist.append(f"{{ {hadd_cmd} && {validate_cmd} ; }} || rm -f {mc_target}")
     if data_files:
-        cmdlist.append(
-            f"hadd -v 0 -k {'-f ' if args.force else ''}{newoutdir}/data.root "
+        data_target = f"{newoutdir}/data.root"
+        hadd_cmd = (
+            f"hadd -v 0 -k {_HADD_COMPRESSION} {'-f ' if args.force else ''}{data_target} "
             + " ".join(data_files)
         )
+        validate_cmd = f'root -l -b -q \'{_VALIDATE_MACRO}("{data_target}")\''
+        cmdlist.append(f"{{ {hadd_cmd} && {validate_cmd} ; }} || rm -f {data_target}")
 
 if len(cmdlist) == 0:
     print("Found zero files to hadd. Are you pointing to the right directories?")
