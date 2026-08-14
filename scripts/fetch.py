@@ -78,7 +78,7 @@ parser.add_argument(
     "-r",
     "--redirector",
     help="xrootd ridirector in case sites are not found",
-    choices=["infn", "fnal", "cern"],
+    choices=["infn", "fnal", "cern", "global"],
     default="infn",
 )
 parser.add_argument(
@@ -1369,7 +1369,9 @@ def getFilesFromDas(args):
             redirector = {
                 "infn": "root://xrootd-cms.infn.it//",
                 "fnal": "root://cmsxrootd.fnal.gov/",
-                "cern": "root://cms-xrd-global.cern.ch/",
+                "cern": "root://eoscms.cern.ch/",
+                "ghent": "root://maite.iihe.ac.be/",
+                "global": "root://cms-xrd-global.cern.ch/",
             }
             xrd = redirector[args.redirector]
             if args.limit is not None:
@@ -1427,16 +1429,6 @@ def getFilesFromDas(args):
         # Sort sites by completion percentage (highest first)
         site_completions.sort(key=lambda x: x[1], reverse=True)
 
-        # Prefer CERN-local EOS (root://eoscms.cern.ch, via T2_CH_CERN) over every other
-        # site when the dataset is actually present there: it skips the extra
-        # discovery/redirect hop the global redirector (root://cms-xrd-global.cern.ch) needs,
-        # without changing the responsiveness check or global-redirector fallback below --
-        # if T2_CH_CERN isn't listed here (dataset not present) or fails the responsiveness
-        # check just below, this falls straight through to the existing completion-sorted
-        # order and eventually the global redirector, same as before.
-        _CERN_LOCAL_SITE = "T2_CH_CERN"
-        site_completions.sort(key=lambda x: x[0] != _CERN_LOCAL_SITE)
-
         # Now check responsiveness only for the top sites in order of completion
         site_candidates = []
         if args.verbose:
@@ -1481,7 +1473,9 @@ def getFilesFromDas(args):
             redirector = {
                 "infn": "root://xrootd-cms.infn.it//",
                 "fnal": "root://cmsxrootd.fnal.gov/",
-                "cern": "root://cms-xrd-global.cern.ch/",
+                "cern": "root://eoscms.cern.ch/",
+                "ghent": "root://maite.iihe.ac.be/",
+                "global": "root://cms-xrd-global.cern.ch/",
             }
             xrd = redirector[args.redirector]
 
@@ -1509,7 +1503,9 @@ def getFilesFromDas(args):
                 redirector = {
                     "infn": "root://xrootd-cms.infn.it//",
                     "fnal": "root://cmsxrootd.fnal.gov/",
-                    "cern": "root://cms-xrd-global.cern.ch/",
+                    "cern": "root://eoscms.cern.ch/",
+                    "ghent": "root://maite.iihe.ac.be/",
+                    "global": "root://cms-xrd-global.cern.ch/",
                 }
                 xrd = redirector[args.redirector]
 
