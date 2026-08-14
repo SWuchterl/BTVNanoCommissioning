@@ -1027,11 +1027,24 @@ def check_site_responsiveness(
         # Test each file
         successful_files = 0
         failed_files = []
+        max_attempts = 5
+        retry_delay = 10  # seconds -- sites are sometimes momentarily flaky
         for idx, test_file in enumerate(dataset_files):
             # Construct the full PFN using the site's redirector rules
             full_pfn = _get_pfn_for_site(test_file, sites_xrootd_prefix[site])
-            # Use the existing access_xrootd_file function
-            success, working_url = access_xrootd_file(full_pfn, xrootd_tools)
+            # Use the existing access_xrootd_file function, retrying a transient
+            # failure a few times before giving up on this file
+            success, working_url = False, None
+            for attempt in range(1, max_attempts + 1):
+                success, working_url = access_xrootd_file(full_pfn, xrootd_tools)
+                if success:
+                    break
+                if attempt < max_attempts:
+                    if args.verbose:
+                        print(
+                            f"⚠️ File {idx+1}/{total_files} not accessible (attempt {attempt}/{max_attempts}), retrying in {retry_delay}s..."
+                        )
+                    time.sleep(retry_delay)
 
             if success:
                 successful_files += 1
@@ -1055,8 +1068,10 @@ def check_site_responsiveness(
                         "redirector": redirector,
                     }
             else:
-                print(f"❌ File {idx+1}/{total_files} NOT accessible")
-                # Fail fast - stop checking as soon as one file fails
+                print(
+                    f"❌ File {idx+1}/{total_files} NOT accessible after {max_attempts} attempts"
+                )
+                # Fail fast - stop checking as soon as one file fails all retries
                 print(
                     f"❌ Site {site} fails - file {idx+1}/{total_files} not accessible"
                 )
