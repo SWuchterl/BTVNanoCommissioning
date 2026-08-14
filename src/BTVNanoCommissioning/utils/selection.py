@@ -220,7 +220,8 @@ def ele_promptmvaid(events, campaign):
     ele_etaSC = _ele_etaSC(events, campaign)
     elemask = (
         (abs(ele_etaSC) < 1.4442) | ((abs(ele_etaSC) > 1.566) & (abs(ele_etaSC) < 2.5))
-    ) & (events.Electron.promptMVA >= 0.9)
+    ) & (events.Electron.promptMVA >= 0.8)
+    # ) & (events.Electron.promptMVA >= 0.9)
     return elemask
 
 
