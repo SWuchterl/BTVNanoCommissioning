@@ -240,28 +240,50 @@ def _local_pick(arr, idx, default):
 
 
 def SV_link_ragged(events, event_level, jetindx):
-    """Attach the primary secondary vertex (Jet_svIdx1) to a ragged
-    (variable jets/event) list of raw jet indices, e.g. a SelJet collection
-    with a variable number of jets per event capped at some maximum. Unlike
-    SV_link, this does not need a fixed per-event slot count and keeps the
-    output jagged (no padding), matching the shape of `jetindx` itself.
-    Jets with no matched SV (svIdx1 == -1) get -1.
+    """Attach the primary secondary vertex to a ragged (variable jets/event)
+    list of raw jet indices, e.g. a SelJet collection with a variable number
+    of jets per event capped at some maximum. Unlike SV_link, this does not
+    need a fixed per-event slot count and keeps the output jagged (no
+    padding), matching the shape of `jetindx` itself.
+
+    Uses the Jet->SV index (Jet_svIdx1) when available. Some private NanoAOD
+    productions (e.g. CustomSummer24) keep the SV collection but drop that
+    index; in that case, falls back to matching each jet to its closest SV by
+    dR, with no cone restriction. Validated against a sample that has
+    Jet_svIdx1: an initial "highest-dlenSig SV within dR < 0.4" heuristic only
+    reproduced the true link for 89% of jets (capping out ~92% at any cone
+    size); closest-by-dR with no cut reproduces it for 96%, because the
+    actual Jet<->SV association in MiniAOD is track-based, not a local
+    geometric+dlenSig cut. Either way, jets with no matched SV get -1.
     """
     jet = events[event_level].Jet
     sv = events[event_level].SV
-    # pad SV collection with a dummy entry so index 0 is always valid, even
-    # for events with zero SVs (ak.where evaluates both branches eagerly)
-    nsv = ak.num(sv.mass, axis=1)
-    sv_mass = ak.fill_none(ak.pad_none(sv.mass, 1, axis=1), -1.0)
-    sv_dlensig = ak.fill_none(ak.pad_none(sv.dlenSig, 1, axis=1), -1.0)
-    svidx1 = jet.svIdx1[jetindx]
-    # Jet_svIdx1 can reference a secondary vertex that failed the SV
-    # collection's own selection cuts and is therefore missing from `SV`
-    # even though svIdx1 >= 0; guard against that out-of-range case too.
-    has_sv = (svidx1 >= 0) & (svidx1 < nsv[:, None])
-    safe_svidx = ak.where(has_sv, svidx1, 0)
-    mass = ak.where(has_sv, sv_mass[safe_svidx], -1.0)
-    dlensig = ak.where(has_sv, sv_dlensig[safe_svidx], -1.0)
+    if "svIdx1" in jet.fields:
+        # pad SV collection with a dummy entry so index 0 is always valid,
+        # even for events with zero SVs (ak.where evaluates both branches
+        # eagerly)
+        nsv = ak.num(sv.mass, axis=1)
+        sv_mass = ak.fill_none(ak.pad_none(sv.mass, 1, axis=1), -1.0)
+        sv_dlensig = ak.fill_none(ak.pad_none(sv.dlenSig, 1, axis=1), -1.0)
+        svidx1 = jet.svIdx1[jetindx]
+        # Jet_svIdx1 can reference a secondary vertex that failed the SV
+        # collection's own selection cuts and is therefore missing from `SV`
+        # even though svIdx1 >= 0; guard against that out-of-range case too.
+        has_sv = (svidx1 >= 0) & (svidx1 < nsv[:, None])
+        safe_svidx = ak.where(has_sv, svidx1, 0)
+        mass = ak.where(has_sv, sv_mass[safe_svidx], -1.0)
+        dlensig = ak.where(has_sv, sv_dlensig[safe_svidx], -1.0)
+        return mass, dlensig
+
+    # No Jet->SV index in this production: match by dR instead. Both the
+    # selected jets and the SVs are ragged per event, so build the full
+    # per-jet x per-SV pairing explicitly. No cone cut -- see validation note
+    # above.
+    pair = ak.cartesian([jet[jetindx], sv], axis=1, nested=True)  # (event, jet, sv)
+    dr = pair["0"].delta_r(pair["1"])
+    best = ak.argmin(dr, axis=-1, keepdims=True)
+    mass = ak.fill_none(ak.flatten(pair["1"].mass[best], axis=-1), -1.0)
+    dlensig = ak.fill_none(ak.flatten(pair["1"].dlenSig[best], axis=-1), -1.0)
     return mass, dlensig
 
 
@@ -269,20 +291,48 @@ def SV_link(events, event_level, jetindx):
     """Attach the primary secondary vertex (Jet_svIdx1, an index into the
     SV collection) to the given jet index/indices. Jets with no matched SV
     (svIdx1 == -1), or jet slots with no jet at all (padded jetindx), get -1.
+
+    Some private NanoAOD productions (e.g. CustomSummer24) keep the SV
+    collection but drop the Jet->SV index; when that index is unavailable,
+    falls back to matching each jet slot to its closest SV by dR (no cone
+    restriction -- see the validation note in SV_link_ragged).
     """
     jet = events[event_level].Jet
     sv = events[event_level].SV
     nsv = ak.num(sv.mass, axis=1)
+    has_idx = "svIdx1" in jet.fields
 
     def sv_for(safe_jetidx, has_jet):
-        svidx1 = _local_pick(jet.svIdx1, safe_jetidx, -1)
-        # Jet_svIdx1 can reference a secondary vertex that failed the SV
-        # collection's own selection cuts and is therefore missing from `SV`
-        # even though svIdx1 >= 0; guard against that out-of-range case too.
-        has_sv = has_jet & (svidx1 >= 0) & (svidx1 < nsv)
-        safe_svidx = ak.where(has_sv, svidx1, 0)
-        mass = ak.where(has_sv, _local_pick(sv.mass, safe_svidx, -1.0), -1.0)
-        dlensig = ak.where(has_sv, _local_pick(sv.dlenSig, safe_svidx, -1.0), -1.0)
+        if has_idx:
+            svidx1 = _local_pick(jet.svIdx1, safe_jetidx, -1)
+            # Jet_svIdx1 can reference a secondary vertex that failed the SV
+            # collection's own selection cuts and is therefore missing from
+            # `SV` even though svIdx1 >= 0; guard against that out-of-range
+            # case too.
+            has_sv = has_jet & (svidx1 >= 0) & (svidx1 < nsv)
+            safe_svidx = ak.where(has_sv, svidx1, 0)
+            mass = ak.where(has_sv, _local_pick(sv.mass, safe_svidx, -1.0), -1.0)
+            dlensig = ak.where(
+                has_sv, _local_pick(sv.dlenSig, safe_svidx, -1.0), -1.0
+            )
+            return mass, dlensig
+
+        # No Jet->SV index in this production: match by dR instead. The
+        # jet slot is a single jet per event here, so it broadcasts
+        # directly against the per-event SV list without needing a cartesian.
+        # `jet[safe_jetidx]` cannot be used directly: safe_jetidx is a flat
+        # (non-jagged) per-event index, and awkward interprets a flat index
+        # array indexing a jagged array as axis-0 (event) fancy indexing, not
+        # a per-event local pick -- same local-index mask as `_local_pick`,
+        # kept inline since the record (not a single field) is needed here.
+        # No cone cut -- see the validation note in SV_link_ragged.
+        sel_jet = ak.firsts(jet[ak.local_index(jet.pt) == safe_jetidx[:, None]])
+        dr = sel_jet.delta_r(sv)
+        best = ak.argmin(dr, axis=-1, keepdims=True)
+        mass = ak.fill_none(ak.flatten(sv.mass[best], axis=-1), -1.0)
+        dlensig = ak.fill_none(ak.flatten(sv.dlenSig[best], axis=-1), -1.0)
+        mass = ak.where(has_jet, mass, -1.0)
+        dlensig = ak.where(has_jet, dlensig, -1.0)
         return mass, dlensig
 
     if str(ak.type(jetindx)).count("*") > 1:
