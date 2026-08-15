@@ -1,6 +1,87 @@
 # Awkward2 / Coffea Migration — Plan
 
-Plan only. No changes made. Written 2026-08-03, revised same day after direct API verification
+## STATUS (updated 2026-08-15) — read this first
+
+Track A is fully done and committed on `dev/2dimprov`. Track B's code work (B2) is done on a
+separate branch, `migration/coffea2026` (branched off `dev/2dimprov`, not merged). **The gap before
+that branch is mergeable is B3 — validation breadth, not more code fixes.** Full detail below;
+short version for whoever picks this up next:
+
+### Track A — done, on `dev/2dimprov`
+
+| # | Item | Commit |
+|---|---|---|
+| A0 | Close `BTA_producer` harness gap in `phase0_regression.sh` | `24744da` |
+| A1 | Port `run_uproot_job` → `Runner` (+ fixed a pre-existing `futures`-executor hang: `ProcessPoolExecutor`'s default `fork` start method + XRootD don't mix — fixed via `mp_context=spawn`) | `e512551` |
+| A2 | Drop `Rereco17_94X`/`Winter22Run3` (confirmed both already dead — `campaign_map()` KeyError before reaching any removed code) | `9dc527e` |
+| A3 | Rewrite `BTA_helper.cumsum()` awkward-portable | `e62b97b` |
+
+### Track B — B1/B2 done on `migration/coffea2026`, B3 not started
+
+- **B1 (spike)**: done. All 5 original open questions got a real answer (not speculation):
+  1. Vector numerics (`calc_ip_vector`'s `.dot()`/`.cross()`) — real break, fixed, verified bit-identical to old implicit behavior.
+  2. `missing_branch`/`PFNanoAODSchema` — real break (`events.Jet = ...` rejected by awkward2), fixed, 26 sites.
+  3. `rochester_lookup` signature — **still untested**, no workflow exercised it (Run2 UL16/17/18 only).
+  4. parsl Channels removal — real break, fixed (`Config.run_dir` replaces per-provider `channel=LocalChannel(script_dir=...)`), config construction verified accepted by `parsl.load()`.
+  5. `dask_jobqueue` drift — turned out to be a non-issue this round (resolved version matched `commfw` exactly); would need re-checking if `dask_jobqueue` itself gets bumped later.
+- **B2 (migration branch)**: done. Commits `332df10` (built the parallel `commfw2` env at
+  `/eos/home-s/sewuchte/MyConda/envs/commfw2` — kept alongside `commfw`, did not replace it) and
+  `c343875` (dependency bump in `setup.cfg`/`test_env.yml` + all code fixes). See that commit's
+  message for the full list of fixes — several were real findings beyond this plan's original
+  scope (see "New findings" below).
+- **B3 (cutover)**: **not done, this is the real remaining work.** What exists: an old-env-vs-new-env
+  diff via `scripts/compare_coffea.py`, but only for 3 of ~40 registered workflows
+  (`BTA_addPFMuons`, `BTA_addAllTracks`, `2D_mu_Wc_sf`), and only the `iterative` executor — all
+  three came back bit-identical (branch names and values, rtol=1e-9). Still missing, in priority
+  order:
+  1. **Run the other ~37 workflows** under `commfw2` and diff against a `commfw` baseline the same
+     way. Start with whichever workflows are actually in production use (2D_* ttdilep/ttsemilep
+     variants, ctag_* validation workflows) rather than working through the list mechanically.
+  2. **Actually run a job through `futures`, `parsl`, and `dask`** — B2 only verified the `parsl`
+     `Config`/`Provider` construction is *accepted*, never ran a real chunk through it. `futures`
+     wasn't re-tested at all on this branch (A1 already fixed its fork/XRootD hang independently,
+     on `dev/2dimprov`, so it should carry over, but hasn't been re-confirmed under `commfw2`
+     specifically).
+  3. **One real production batch in parallel on an actual cluster**, per the original plan's B3
+     wording — condor/lxplus infra hasn't been touched or tested at all under the new env yet.
+  4. Only after 1–3: move `dev/2dimprov`'s (or `master`'s) pin and merge.
+
+### New findings from B1/B2, beyond this plan's original scope
+
+Found and fixed while actually running the code under `commfw2` — not anticipated by the original
+5 questions:
+- `events.X = ...` attribute assignment raises under awkward2 (`ak.Array.__setattr__` rejects it) —
+  26 sites, switched to `events["X"] = ...`.
+- `ak.packed` renamed to `ak.to_packed` — 6 sites.
+- Two field-name collisions with the new `vector` package's own coordinate-alias detection: a
+  custom `"rho"` field (pileup density, unrelated to any radial coordinate) and a custom
+  `"deltaR"` field (collides with a vector-provided method) — both renamed internally
+  (`evt_rho`/`dRJet`); zero change to output ROOT branch names.
+- `ak.where(cond, A, B)` evaluates both branches eagerly; `events.GenJet[genjetidx]` raised
+  `IndexError` on events with zero GenJets even though the result gets masked away — fixed with the
+  same "pad so index 0 is always valid" pattern already used by `SV_link_ragged` elsewhere in this
+  codebase.
+- `events.TrkMET` was never registered as a `MissingET` mixin by `NanoAODSchema` (true in both
+  coffea versions) — `MET.delta_phi(TrkMET)` only ever worked via awkward1's loose duck typing;
+  retagged explicitly.
+- uproot5 writes nested awkward records as genuinely nested dotted branches (`Jet.pT`) instead of
+  uproot4's auto-flattened `Jet_pT` — would have silently changed the BTA ROOT output schema for
+  downstream readers (SFbc-2D, etc.); rewrote the writer to reproduce the exact old flat schema.
+- New required dependency: `fsspec-xrootd` (uproot5 moved its XRootD backend onto `fsspec`).
+- `numba==0.67.0`/`llvmlite==0.49.0` (coffea's own resolved floor) hit an LLVM codegen crash
+  (`invalid cast opcode`) in the numba-jitted `to_bitwise_trigger` path, MC-only, reproducible —
+  pinned back to `numba==0.66.0`/`llvmlite==0.48.0` (matching `commfw`) instead.
+
+### Explicitly still out of scope (unchanged from original plan)
+
+Python 3.11+/numpy 2 bump (deferred), `autobtv` fork sync (parked),
+`gitlab.cern.ch/cms-btv/btv-sf-code` (never checked). Also noted in passing, unrelated to this
+migration: `condor_standalone`/`standalone_condor` argparse-choices typo in `runner.py` makes that
+executor dead code — flagged during A1, not fixed, not part of this plan.
+
+---
+
+Plan only below this point reflects the original 2026-08-03 write-up. No changes made. Written 2026-08-03, revised same day after direct API verification
 against the `coffea 2026.7.0` wheel.
 
 Supersedes the scoping in `docs/awkward2_architecture_review.md`, `docs/awkward2_refactor_review.md`
