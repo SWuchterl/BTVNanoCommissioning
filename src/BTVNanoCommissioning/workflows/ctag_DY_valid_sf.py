@@ -309,11 +309,14 @@ class NanoProcessor(processor.ProcessorABC):
         pruned_ev = events[event_level]
         if self.selMod == "QG":
             pruned_ev["SelJet"] = event_jet[event_level][:, 0]
-            pruned_ev["Tag"] = sz
-            pruned_ev["Tag", "pt"] = pruned_ev.Tag.pt
-            pruned_ev["Tag", "eta"] = pruned_ev.Tag.eta
-            pruned_ev["Tag", "phi"] = pruned_ev.Tag.phi
-            pruned_ev["Tag", "mass"] = pruned_ev.Tag.mass
+            # a plain (behavior-less) record, not sz itself -- attaching pt/eta/
+            # phi/mass fields onto sz's own vector-behaved record would leave it
+            # with both cartesian (x,y from the sum) and polar (pt/eta/phi/mass)
+            # fields at once, which awkward2's CandidateArray validation rejects
+            # on any later access (e.g. histogramming)
+            pruned_ev["Tag"] = ak.zip(
+                {"pt": sz.pt, "eta": sz.eta, "phi": sz.phi, "mass": sz.mass}
+            )
         else:
             # keep up to 3 jets/event so jet1, jet2 (and their SV info) are
             # stored alongside jet0, not just the leading jet
@@ -333,11 +336,10 @@ class NanoProcessor(processor.ProcessorABC):
             pruned_ev["negl"] = snegmu
             pruned_ev["SelElectron"] = smu
             # kinOnly = ["SelElectron", "ElectronPlus", "ElectronMinus"]
-        pruned_ev["dilep"] = sz
-        pruned_ev["dilep", "pt"] = pruned_ev.dilep.pt
-        pruned_ev["dilep", "eta"] = pruned_ev.dilep.eta
-        pruned_ev["dilep", "phi"] = pruned_ev.dilep.phi
-        pruned_ev["dilep", "mass"] = pruned_ev.dilep.mass
+        # a plain (behavior-less) record -- see comment on the "Tag" block above
+        pruned_ev["dilep"] = ak.zip(
+            {"pt": sz.pt, "eta": sz.eta, "phi": sz.phi, "mass": sz.mass}
+        )
         pruned_ev["njet"] = ak.count(event_jet[event_level].pt, axis=1)
 
         pruned_ev["dr_mu1jet"] = sposmu.delta_r(sel_jet)

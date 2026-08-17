@@ -100,17 +100,28 @@ def _flatten_to_perjet(ev, ref_collection):
     If `ref_collection` is already one row per event (not jagged), `ev` is returned
     unchanged since it's already effectively per-jet.
     """
-    if ref_collection not in ev:
-        raise ValueError(
-            f"perJet=True requires '{ref_collection}' among the output branches"
-        )
-    ref = ev[ref_collection]
+    # uproot_writeable already flattens nested records into "SelJet_pt"-style
+    # leaf branches (to reproduce uproot4's on-write auto-flattening under
+    # uproot5, which writes genuinely nested branches instead) -- so there is
+    # no bare "SelJet" key left to key off of; use one of its flattened
+    # sub-branches as the per-jet reference instead.
+    if ref_collection in ev:
+        ref = ev[ref_collection]
+        template = ref[ref.fields[0]]
+    else:
+        prefix = f"{ref_collection}_"
+        sub_keys = [k for k in ev if k.startswith(prefix)]
+        if not sub_keys:
+            raise ValueError(
+                f"perJet=True requires '{ref_collection}' among the output branches"
+            )
+        ref = ev[sub_keys[0]]
+        template = ref
     try:
         ref_counts = ak.num(ref, axis=1)
     except ValueError:
         return ev
 
-    template = ref[ref.fields[0]]
     out = {}
     for name, arr in ev.items():
         try:

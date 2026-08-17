@@ -370,7 +370,16 @@ class NanoProcessor(processor.ProcessorABC):
         smuon_jet = smuon_jet[:, 0]
         ssmu = ssmu[:, 0]
         sz = shmu + ssmu
-        sw = shmu + smet
+        # Electron/Muon (Candidate behavior) + MET (plain PtEtaPhiMLorentzVector)
+        # has no registered numpy.add overload under the new vector package;
+        # strip shmu to a plain LorentzVector (same pt/eta/phi/mass, no
+        # candidate-specific fields) before summing with MET -- same pattern
+        # already used for iso_lep_trans above, just without zeroing eta.
+        shmu_lv = ak.zip(
+            {"pt": shmu.pt, "eta": shmu.eta, "phi": shmu.phi, "mass": shmu.mass},
+            with_name="PtEtaPhiMLorentzVector",
+        )
+        sw = shmu_lv + smet
 
         osss = shmu.charge * ssmu.charge * -1  # Actual osss calculation
         smuon_jet_passc = {}

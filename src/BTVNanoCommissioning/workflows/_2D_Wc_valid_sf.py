@@ -20,6 +20,9 @@ from BTVNanoCommissioning.helpers.update_branch import missing_branch
 from BTVNanoCommissioning.utils.histogramming.histogrammer import (
     histogrammer,
 )
+from BTVNanoCommissioning.utils.histogramming.histograms.sf2d import (
+    SCHEMES as SF2D_SCHEMES,
+)
 from BTVNanoCommissioning.utils.array_writer import array_writer
 from BTVNanoCommissioning.utils.selection import (
     HLT_helper,
@@ -117,6 +120,9 @@ class NanoProcessor(processor.ProcessorABC):
                 cutbased=("cutbased" in self.selMod),
                 year=self._year,
                 campaign=self._campaign,
+                # MuonJet.svmass is valid since the jetindx fix (111b17f);
+                # see histograms/sf2d.py.
+                sf2d_svmass=True,
             )
 
         if shift_name is None:
@@ -487,7 +493,16 @@ class NanoProcessor(processor.ProcessorABC):
         smuon_jet = sjets[:, 0]
         ssmu = ssmu[:, 0]
         sz = shmu + ssmu
-        sw = shmu + smet
+        # Electron/Muon (Candidate behavior) + MET (plain PtEtaPhiMLorentzVector)
+        # has no registered numpy.add overload under the new vector package;
+        # strip shmu to a plain LorentzVector (same pt/eta/phi/mass, no
+        # candidate-specific fields) before summing with MET -- same pattern
+        # already used for iso_lep_trans above, just without zeroing eta.
+        shmu_lv = ak.zip(
+            {"pt": shmu.pt, "eta": shmu.eta, "phi": shmu.phi, "mass": shmu.mass},
+            with_name="PtEtaPhiMLorentzVector",
+        )
+        sw = shmu_lv + smet
 
         osss = shmu.charge * ssmu.charge * -1
         ossswrite = shmu.charge * ssmu.charge * -1
@@ -811,29 +826,26 @@ class NanoProcessor(processor.ProcessorABC):
             )
 
             # SF-fit templates (histograms/sf2d.py): tag category x jet pT x
-            # nSVs, filled with OS/SS kept as separate "osss" categories
+            # SV variable, filled with OS/SS kept as separate "osss" categories
             # (never subtracted -- SFbc-2D/OptimizedWP/CLAUDE.md settled
-            # question 7). svmass is not filled here: it's only valid in the
-            # DY channels in the current trees, see the same note.
+            # question 7). The muon-tagged jet is the fit object here, and is
+            # the jet SV_link resolves the svmass for.
             muon_jet = pruned_ev.MuonJet
-            for scheme, branch in (
-                ("legacy", "btagNoPIDParTAK42Dbin"),
-                ("phase4", "btagNoPIDParTAK4_phase42Dbin"),
-            ):
-                nsv_name = f"sf2d_{scheme}_nSVs"
-                if (
-                    nsv_name in output
-                    and branch in muon_jet.fields
-                    and "nSVs" in muon_jet.fields
-                ):
-                    output[nsv_name].fill(
+            for scheme, (branch, _codes) in SF2D_SCHEMES.items():
+                if branch not in muon_jet.fields:
+                    continue
+                for var in ("nSVs", "svmass"):
+                    name = f"sf2d_{scheme}_{var}"
+                    if name not in output or var not in muon_jet.fields:
+                        continue
+                    output[name].fill(
                         syst=syst,
                         flav=smflav,
                         osss=osss,
                         tagcat=flatten(muon_jet[branch]),
                         pt=flatten(muon_jet.pt),
-                        nSVs=flatten(muon_jet.nSVs),
                         weight=weight,
+                        **{var: flatten(muon_jet[var])},
                     )
 
         #######################

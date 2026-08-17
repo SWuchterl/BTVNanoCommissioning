@@ -247,24 +247,29 @@ class NanoProcessor(processor.ProcessorABC):
         pruned_ev = events[event_level]
         pruned_ev["SelJet"] = event_jet[event_level]
 
+        sdilep = shlep[:, 0] + shlep[:, 1]
+        # a plain (behavior-less) record, not sdilep itself -- storing sdilep's
+        # own vector-behaved record directly, plus its derived pt/eta/phi/mass
+        # as separate literal fields, would leave the record with both cartesian
+        # (x,y from the sum) and polar fields at once, which awkward2's
+        # CandidateArray validation rejects on any later access (e.g. histogramming)
+        dilep_kin = ak.zip(
+            {"pt": sdilep.pt, "eta": sdilep.eta, "phi": sdilep.phi, "mass": sdilep.mass}
+        )
         if self.selMod == "dilepttM":
             pruned_ev["SelMuon"] = shlep[:, :2]
             pruned_ev["hl"] = shlep[:, 0]
             pruned_ev["sl"] = shlep[:, 1]
-            pruned_ev["dilep"] = shlep[:, 0] + shlep[:, 1]
+            pruned_ev["dilep"] = dilep_kin
         if self.selMod == "dilepttE":
             pruned_ev["SelElectron"] = shlep[:, :2]
             pruned_ev["hl"] = shlep[:, 0]
             pruned_ev["sl"] = shlep[:, 1]
-            pruned_ev["dilep"] = shlep[:, 0] + shlep[:, 1]
+            pruned_ev["dilep"] = dilep_kin
 
         pruned_ev["MuonJet"] = mu_jet[event_level][:, 0]
         pruned_ev["SoftMuon"] = soft_muon[event_level][:, 0]
         pruned_ev["njet"] = ak.count(event_jet[event_level].pt, axis=1)
-        pruned_ev["dilep", "pt"] = pruned_ev.dilep.pt
-        pruned_ev["dilep", "eta"] = pruned_ev.dilep.eta
-        pruned_ev["dilep", "phi"] = pruned_ev.dilep.phi
-        pruned_ev["dilep", "mass"] = pruned_ev.dilep.mass
         if "PFCands" in events.fields:
             pruned_ev.PFCands = PFCand_link(events, event_level, jetindx)
 

@@ -235,11 +235,15 @@ class NanoProcessor(processor.ProcessorABC):
         pruned_ev["SelElectron"] = iso_ele[event_level][:, 0]
         pruned_ev["MuonJet"] = mu_jet[event_level][:, 0]
         pruned_ev["SoftMuon"] = soft_muon[event_level][:, 0]
-        pruned_ev["dilep"] = pruned_ev.SelMuon + pruned_ev.SelElectron
-        pruned_ev["dilep", "pt"] = pruned_ev.dilep.pt
-        pruned_ev["dilep", "eta"] = pruned_ev.dilep.eta
-        pruned_ev["dilep", "phi"] = pruned_ev.dilep.phi
-        pruned_ev["dilep", "mass"] = pruned_ev.dilep.mass
+        sdilep = pruned_ev.SelMuon + pruned_ev.SelElectron
+        # a plain (behavior-less) record, not sdilep itself -- attaching pt/eta/
+        # phi/mass fields onto sdilep's own vector-behaved record would leave it
+        # with both cartesian (x,y from the sum) and polar (pt/eta/phi/mass)
+        # fields at once, which awkward2's CandidateArray validation rejects on
+        # any later access (e.g. histogramming)
+        pruned_ev["dilep"] = ak.zip(
+            {"pt": sdilep.pt, "eta": sdilep.eta, "phi": sdilep.phi, "mass": sdilep.mass}
+        )
         if "PFCands" in events.fields:
             pruned_ev["PFCands"] = PFCand_link(events, event_level, jetindx)
         # Add custom variables

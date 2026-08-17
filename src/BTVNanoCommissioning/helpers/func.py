@@ -81,14 +81,31 @@ def dump_lumi(events, output):
 
 
 ## Based on https://github.com/CoffeaTeam/coffea/discussions/735
+def _inner_type(t):
+    # awkward1 wraps the inner type as `.type`; awkward2 renamed it to `.content`
+    return t.content if hasattr(t, "content") else t.type
+
+
+# awkward1 names the leaf type PrimitiveType; awkward2 renamed it to NumpyType
+_LEAF_TYPES = tuple(
+    cls
+    for cls in (
+        getattr(ak.types, "PrimitiveType", None),
+        getattr(ak.types, "NumpyType", None),
+    )
+    if cls is not None
+)
+
+
 def _is_rootcompat(a):
     """Is it a flat or 1-d jagged array?"""
     t = ak.type(a)
-    if isinstance(t, ak._ext.ArrayType):
-        if isinstance(t.type, ak._ext.PrimitiveType):
+    if isinstance(t, ak.types.ArrayType):
+        inner = _inner_type(t)
+        if isinstance(inner, _LEAF_TYPES):
             return True
-        if isinstance(t.type, ak._ext.ListType) and isinstance(
-            t.type.type, ak._ext.PrimitiveType
+        if isinstance(inner, ak.types.ListType) and isinstance(
+            _inner_type(inner), _LEAF_TYPES
         ):
             return True
     return False
@@ -162,7 +179,10 @@ def SV_link_ragged(events, event_level, jetindx):
     # per-jet x per-SV pairing explicitly. No cone cut -- see validation note
     # above.
     pair = ak.cartesian([jet[jetindx], sv], axis=1, nested=True)  # (event, jet, sv)
-    dr = pair["0"].delta_r(pair["1"])
+    # SecondaryVertex is a Vertex (position x/y/z), not a Lorentz vector -- coffea's
+    # old duck-typed delta_r() tolerated it directly, the new vector package doesn't;
+    # use the .p4 property coffea provides for exactly this
+    dr = pair["0"].delta_r(pair["1"].p4)
     best = ak.argmin(dr, axis=-1, keepdims=True)
     mass = ak.fill_none(ak.flatten(pair["1"].mass[best], axis=-1), -1.0)
     dlensig = ak.fill_none(ak.flatten(pair["1"].dlenSig[best], axis=-1), -1.0)
@@ -209,7 +229,8 @@ def SV_link(events, event_level, jetindx):
         # kept inline since the record (not a single field) is needed here.
         # No cone cut -- see the validation note in SV_link_ragged.
         sel_jet = ak.firsts(jet[ak.local_index(jet.pt) == safe_jetidx[:, None]])
-        dr = sel_jet.delta_r(sv)
+        # sv (not sv.p4) is a Vertex, not a Lorentz vector -- see SV_link_ragged
+        dr = sel_jet.delta_r(sv.p4)
         best = ak.argmin(dr, axis=-1, keepdims=True)
         mass = ak.fill_none(ak.flatten(sv.mass[best], axis=-1), -1.0)
         dlensig = ak.fill_none(ak.flatten(sv.dlenSig[best], axis=-1), -1.0)
@@ -241,6 +262,18 @@ def uproot_writeable(events, include=["events", "run", "luminosityBlock"]):
     if len(include) == 1 and include[0] == "*":
         no_filter = False
     for bname in events.fields:
+        # Check relevance against `include` from the bname string alone, before
+        # touching events[bname] at all: accessing any nested/record field
+        # triggers awkward2's eager __awkward_validation__, so an irrelevant
+        # collection elsewhere in the file that's malformed for this
+        # production (e.g. TrigObj on some private NanoAODs) would otherwise
+        # crash the write even though it was never going to be included.
+        if (
+            not no_filter
+            and bname not in include
+            and all(np.char.startswith(include, bname) == False)
+        ):
+            continue
         if not events[bname].fields:
             if not no_filter and bname not in include:
                 continue
@@ -248,7 +281,6 @@ def uproot_writeable(events, include=["events", "run", "luminosityBlock"]):
                 ak.to_packed(ak.without_parameters(events[bname])), -99
             )
         else:
-            b_nest = {}
             no_filter_nest = False
             if all(np.char.startswith(include, bname) == False):
                 continue
@@ -274,7 +306,10 @@ def uproot_writeable(events, include=["events", "run", "luminosityBlock"]):
                 ):
                     continue
                 evnums = ak.num(events[bname][n], axis=0)
-                if not isinstance(evnums, int):
+                # awkward1 returns a plain int here; awkward2 returns a 0-d
+                # numpy.ndarray of the same count -- check dimensionality, not
+                # type, so this isn't awkward-version-sensitive
+                if np.ndim(evnums) != 0:
                     continue
                 if not _is_rootcompat(events[bname][n]) and evnums != len(
                     flatten(events[bname][n])
@@ -283,9 +318,12 @@ def uproot_writeable(events, include=["events", "run", "luminosityBlock"]):
                 # skip IdxG
                 if "IdxG" in n:
                     continue
-                b_nest[n] = ak.fill_none(
+                # write flat "<bname>_<n>" keys directly, matching BTA_producer's
+                # own convention and uproot4's old auto-flattened schema -- a
+                # nested ev[bname] = ak.zip(...) record would make uproot5 write
+                # genuinely nested dotted branches ("SelJet.pt") instead of the
+                # flat ones downstream consumers (SFbc-2D) expect ("SelJet_pt")
+                ev[f"{bname}_{n}"] = ak.fill_none(
                     ak.to_packed(ak.without_parameters(events[bname][n])), -99
                 )
-            if bool(b_nest):
-                ev[bname] = ak.zip(b_nest)
     return ev
