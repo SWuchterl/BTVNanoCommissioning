@@ -153,6 +153,14 @@ def get_main_parser():
         ),
     )
     parser.add_argument("--isArray", action="store_true", help="Output root files")
+    parser.add_argument(
+        "--array-systs",
+        dest="array_systs",
+        default="none",
+        choices=["none", "weights", "shifts", "both"],
+        help="Forwarded to runner.py --array-systs: how much systematic "
+        "content the --isArray trees carry. Default: %(default)s",
+    )
 
     parser.add_argument(
         "--noHist", action="store_true", help="Not output coffea histogram"

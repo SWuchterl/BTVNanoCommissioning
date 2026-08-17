@@ -7,13 +7,27 @@ import os, uproot
 
 # b/c-tag SF names weight_manager() (correction.py) may add via btagSFs(); only one
 # is active at a time there, kept as a list so ftagWeight resolves to whichever is.
-_FTAG_SF_NAMES = ["UParTAK4BC", "PNetBC", "DeepJetC", "DeepJetB", "DeepCSVB", "DeepCSVC"]
+_FTAG_SF_NAMES = [
+    "UParTAK4BC",
+    "PNetBC",
+    "DeepJetC",
+    "DeepJetB",
+    "DeepCSVB",
+    "DeepCSVC",
+]
 
 # Central weight branches array_writer() always computes (see below). Listed
 # explicitly here -- rather than relying on the "weight" substring match used for
 # other branches -- since "genWeight" collides with a native NanoAOD field name and
 # would otherwise be silently dropped by the setdiff1d-based default branch list.
-_WEIGHT_BRANCHES = ["genWeight", "ttbar_weight", "puwei", "muWeight", "eleWeight", "ftagWeight"]
+_WEIGHT_BRANCHES = [
+    "genWeight",
+    "ttbar_weight",
+    "puwei",
+    "muWeight",
+    "eleWeight",
+    "ftagWeight",
+]
 
 arraySchema = {
     "CFM": _WEIGHT_BRANCHES
@@ -190,10 +204,19 @@ def array_writer(
     perJet=False,  # write one row per jet instead of one row per event
     perJet_collection="SelJet",  # jet collection used to determine jets/event
 ):
-    # Arrays are only written out for the nominal shift/weight: no
-    # per-systematic-variation branches, just the individual central weight
-    # components needed for realistic data/MC agreement.
-    if systname[0] != "nominal":
+    # How much systematic content the trees carry, from runner.py --array-systs
+    # (set on the processor instance; absent for anything constructing a
+    # processor directly, which then keeps the historical behaviour).
+    #   none    nominal shift only, central weight components only  [default]
+    #   weights adds one weight_<variation> branch per weight variation
+    #   shifts  also writes a tree per JES/JER shift, under its own directory
+    #   both    both of the above
+    # The two are independent axes and are deliberately NOT crossed: the
+    # weight_* branches are written on the nominal shift only, so enabling
+    # "both" gives shifted trees plus one set of varied weights, not their
+    # product.
+    syst_mode = getattr(processor_class, "arraySysts", "none")
+    if systname[0] != "nominal" and syst_mode not in ("shifts", "both"):
         return
 
     if weights is not None:
@@ -211,6 +234,15 @@ def array_writer(
         pruned_event["muWeight"] = _partial([n for n in added if n.startswith("mu_")])
         pruned_event["eleWeight"] = _partial([n for n in added if n.startswith("ele_")])
         pruned_event["ftagWeight"] = _partial(_FTAG_SF_NAMES)
+
+        # Varied total weights, one branch per variation. Only on the nominal
+        # shift: a JES-shifted tree's weight variations are the same set, and
+        # writing them there would store the cross product for no gain. The
+        # "weight" substring is what gets these picked up by the out_branch
+        # selection below, so the prefix is load-bearing -- do not rename.
+        if syst_mode in ("weights", "both") and systname[0] == "nominal":
+            for variation in sorted(weights.variations):
+                pruned_event[f"weight_{variation}"] = weights.weight(modifier=variation)
 
     if not isRealData:
         xs_dict = {}
