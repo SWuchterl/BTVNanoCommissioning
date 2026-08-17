@@ -436,8 +436,8 @@ def missing_branch(events, campaign=None):
                 not hasattr(events.Jet, bin2d_name)
                 and hasattr(events.Jet, hfvlf_name)
                 and hasattr(events.Jet, bvc_name)
-                # 2D WP boundaries aren't calibrated for every tagger (e.g.
-                # NoPIDParTAK4 doesn't have any yet) -- skip rather than KeyError.
+                # 2D WP boundaries aren't calibrated for every (campaign,
+                # tagger) pair -- skip rather than KeyError.
                 and wp_key in btag_wp_dict.get(campaign, {})
             ):
                 jets = events.Jet

@@ -7,26 +7,36 @@ import hist as Hist
 # summing bins exactly. Do NOT add/move edges here.
 _PT_EDGES = [25.0, 35.0, 50.0, 70.0, 90.0, 120.0, np.inf]
 
-# Tag-category codes for each 2D scheme (utils/selection.py btag_wp_dict):
-# legacy is the sparse 40s/50s numbering, phase4 is the dense 0..10 scheme
-# from SFbc-2D/OptimizedWP/results/phase4_scheme_NoPIDParT.json.
-_SCHEMES = {
-    "legacy": [0, 40, 41, 42, 43, 44, 50, 51, 52, 53, 54],
-    "phase4": list(range(11)),
+# The 2D category schemes to write a template for, as
+# name -> (Jet branch holding the category code, category codes).
+# Single source of truth: the fill sites import this rather than repeating the
+# branch names, so a scheme is added here once.
+#
+# The two taggers share the same 4x8 mapping and therefore the same sparse
+# 40s/50s code numbering; only the HFvLF/BvC cut values differ
+# (utils/selection.py btag_wp_dict). phase4 is the re-optimised NoPIDParT
+# scheme from SFbc-2D/OptimizedWP/results/phase4_scheme_NoPIDParT.json, which
+# renumbers its 11 categories densely as 0..10. There is deliberately no
+# phase4 entry for UParT: that optimisation was only ever run for NoPIDParT.
+_LEGACY_CODES = [0, 40, 41, 42, 43, 44, 50, 51, 52, 53, 54]
+SCHEMES = {
+    "nopid_legacy": ("btagNoPIDParTAK42Dbin", _LEGACY_CODES),
+    "nopid_phase4": ("btagNoPIDParTAK4_phase42Dbin", list(range(11))),
+    "upart_legacy": ("btagUParTAK42Dbin", _LEGACY_CODES),
 }
 
 
 def get_histograms(axes, **kwargs):
-    """SF-fit templates: tag category x jet pT x SV variable, for both the
-    legacy and phase4 2D category schemes, and for both SV-axis choices
-    (SelJet_nSVs, SelJet_svmass). Filled in the DY/Wc/ttdilep 2D workflows.
+    """SF-fit templates: tag category x jet pT x SV variable, for every scheme
+    in SCHEMES and both SV-axis choices (nSVs, svmass). Filled in the
+    DY/Wc/ttdilep 2D workflows.
 
-    The svmass template is only booked for channels that pass
-    sf2d_svmass=True, which today means DY alone: a wrong-jet index
-    invalidates SelJet_svmass in W+c and ttdilep in the current trees (see
-    SFbc-2D/OptimizedWP/CLAUDE.md). The workflow is what knows whether the
-    branch is trustworthy, so it declares it here -- the fill code must not
-    have to guess from the event content.
+    An svmass template is booked only for channels passing sf2d_svmass=True.
+    The wrong-jet index that used to invalidate svmass outside DY was fixed in
+    the framework (commit 111b17f), so all three template channels set it --
+    but trees produced *before* that fix still carry the bad values, so this
+    stays an explicit per-channel declaration rather than an unconditional
+    booking.
     """
     include_osss = kwargs.get("include_osss", False)
     include_svmass = kwargs.get("sf2d_svmass", False)
@@ -45,7 +55,7 @@ def get_histograms(axes, **kwargs):
     if include_osss:
         common_axes.append(axes["osss"])
 
-    for scheme, codes in _SCHEMES.items():
+    for scheme, (_branch, codes) in SCHEMES.items():
         tagcat_axis = Hist.axis.IntCategory(
             codes, name="tagcat", label=f"tag category ({scheme})"
         )

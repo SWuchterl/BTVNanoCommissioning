@@ -90,6 +90,9 @@ class NanoProcessor(processor.ProcessorABC):
                 obj_list=objs,
                 hist_collections=hist_collections,
                 njet=2,
+                # SelJet.svmass is valid since the jetindx fix (111b17f);
+                # see histograms/sf2d.py.
+                sf2d_svmass=True,
             )
 
         if shift_name is None:

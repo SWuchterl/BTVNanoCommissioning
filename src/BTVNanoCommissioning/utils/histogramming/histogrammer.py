@@ -2,6 +2,7 @@ import awkward as ak
 import numpy as np
 from BTVNanoCommissioning.helpers.func import flatten
 from .hist_helpers import get_hist_collections, get_axes_collections
+from .histograms.sf2d import SCHEMES as SF2D_SCHEMES
 
 
 def _fill_sf2d_histograms(output, seljets, genflavor, weight, syst):
@@ -23,10 +24,7 @@ def _fill_sf2d_histograms(output, seljets, genflavor, weight, syst):
     flat_weight = flatten(ak.broadcast_arrays(weight, seljets.pt)[0])
     flat_syst = np.full(len(flat_pt), syst[0])
 
-    for scheme, branch in (
-        ("legacy", "btagNoPIDParTAK42Dbin"),
-        ("phase4", "btagNoPIDParTAK4_phase42Dbin"),
-    ):
+    for scheme, (branch, _codes) in SF2D_SCHEMES.items():
         if branch not in seljets.fields:
             continue
         flat_tagcat = flatten(seljets[branch])
@@ -693,8 +691,6 @@ def histo_writter(pruned_ev, output, weights, systematics, isSyst, SF_map):
         # these itself alongside its other inline histograms instead, since
         # it doesn't go through histo_writer.
         if any(k.startswith("sf2d_") for k in output.keys()):
-            _fill_sf2d_histograms(
-                output, pruned_ev.SelJet, genflavor, weight, syst
-            )
+            _fill_sf2d_histograms(output, pruned_ev.SelJet, genflavor, weight, syst)
 
     return output
