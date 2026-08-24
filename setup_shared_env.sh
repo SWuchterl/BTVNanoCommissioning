@@ -23,6 +23,12 @@
 # and belong to anyone without editing paths in here.
 REPO_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
+if [ -n "$VIRTUAL_ENV" ]; then
+    deactivate
+fi
+
+initConda
+
 # commfw2 is a real conda env (unlike rabbit_env, which is a plain venv with its
 # own bin/activate) -- needs the conda hook, not `source .../bin/activate`.
 _conda_base="${CONDA_BASE:-}"
@@ -72,11 +78,21 @@ export PYTHONPATH="${RABBIT_BASE}:${REPO_ROOT}:${REPO_ROOT}/SFbc-2D/scripts/util
 export ISARRAY="${ISARRAY:-1}"
 export ARRAY_SYSTS="${ARRAY_SYSTS:-weights}"
 export ACCOUNTING_GROUP="${ACCOUNTING_GROUP:-group_u_CMST3.all}"
-export X509_USER_PROXY="${X509_USER_PROXY:-$HOME/x509up_u$(id -u)}"
+# export X509_USER_PROXY="${X509_USER_PROXY:-$HOME/x509up_u$(id -u)}"
+export X509_USER_PROXY=$HOME/x509up_u`id -u`
 export GFAL_PYTHONBIN="${GFAL_PYTHONBIN:-/usr/bin/python3}"
+
+# commfw2's ca-policy-lcg pins X509_CERT_DIR to its own bundled CRLs, which go stale
+# (they expire ~weekly) and break GSI auth with "CRL has expired". The CVMFS CA dir is
+# refreshed automatically -- prefer it when present, keep the conda default otherwise.
+if [ -d /cvmfs/grid.cern.ch/etc/grid-security/certificates ]; then
+    export X509_CERT_DIR=/cvmfs/grid.cern.ch/etc/grid-security/certificates
+fi
 
 alias python=python3
 
 echo "Activated ${CONDA_DEFAULT_ENV} (numpy $(python -c 'import numpy; print(numpy.__version__)') / coffea $(python -c 'import coffea; print(coffea.__version__)'))"
 echo "  REPO_ROOT=${REPO_ROOT}  RABBIT_BASE=${RABBIT_BASE}"
 echo "  ISARRAY=${ISARRAY}  ARRAY_SYSTS=${ARRAY_SYSTS}  ACCOUNTING_GROUP=${ACCOUNTING_GROUP}"
+echo "  X509_USER_PROXY=${X509_USER_PROXY}  GFAL_PYTHONBIN=${GFAL_PYTHONBIN}"
+echo "  X509_CERT_DIR=${X509_CERT_DIR}"
