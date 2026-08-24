@@ -1,4 +1,4 @@
-import os, sys, json
+import os, sys, json, subprocess
 from copy import deepcopy
 from collections import defaultdict
 import time
@@ -7,6 +7,18 @@ from rich import print
 from BTVNanoCommissioning.utils.xrootdtools import get_xrootd_sites_map, find_other_file
 from glob import glob
 from alive_progress import alive_bar
+
+
+def eos_url(path):
+    """xrootd URL for a CERN EOS path -- must match condor/submitter.py."""
+    if path.startswith("root://"):
+        return path.rstrip("/")
+    if path.startswith("/eos/user/") or path.startswith("/eos/home-"):
+        return "root://eosuser.cern.ch/" + path.rstrip("/")
+    if path.startswith("/eos/"):
+        return "root://eoscms.cern.ch/" + path.rstrip("/")
+    raise SystemExit(f"ERROR: cannot derive an EOS sandbox URL for '{path}'.")
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("job_dir", type=str, help="Input string")
@@ -81,6 +93,20 @@ if updatexrootd:
             newsamples[r][samp] = newfllist
     with open(os.path.join(jobdir, "split_samples_resubmit.json"), "w") as json_file:
         json.dump(newsamples, json_file, indent=4)
+    # resubmit.jdl inherits the root:// URL from submit.jdl with the filename
+    # swapped to split_samples_resubmit.json (below), so push this file to the
+    # same EOS .condor_sandbox the submitter used.
+    sandbox_url = eos_url(outdir) + "/.condor_sandbox"
+    subprocess.run(
+        [
+            "xrdcp",
+            "-f",
+            "-p",
+            os.path.join(jobdir, "split_samples_resubmit.json"),
+            f"{sandbox_url}/split_samples_resubmit.json",
+        ],
+        check=True,
+    )
 
 
 numlist2 = open(f"{jobdir}/jobnum_list_resubmit.txt", "w")

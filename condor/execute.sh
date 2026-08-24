@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 JOBID=$1
 NCPU=$2
@@ -85,9 +85,6 @@ phase pip
 # Build the sample json given the job id
 python -c "import json, os; flname = 'split_samples.json' if os.path.isfile(f'$WORKDIR/split_samples.json') else 'split_samples_resubmit.json';  json.dump(json.load(open(f'$WORKDIR/{flname}'))['$JOBID'], open('$WORKDIR/sample.json', 'w'), indent=4)"
 cp $WORKDIR/sample.json $WORKDIR/BTVNanoCommissioning/sample.json
-
-ls -lah $WORKDIR
-ls -lah $WORKDIR/BTVNanoCommissioning
 
 # Unparse arguments and send to runner.py
 OPTS="--wf ${ARGS[workflow]} --year ${ARGS[year]} --campaign ${ARGS[campaign]} --chunk ${ARGS[chunk]}"

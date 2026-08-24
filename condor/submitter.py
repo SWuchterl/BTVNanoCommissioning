@@ -1,8 +1,11 @@
 import os, sys
+import subprocess
 import json
 import shutil
 import tarfile
 import argparse
+
+AUTO_YES = False
 
 
 def _prompt_yn(prompt):
@@ -10,6 +13,9 @@ def _prompt_yn(prompt):
     # in a row non-interactively; stdin has no input to give, so input()
     # would raise EOFError. Match what happens if a human just hits enter --
     # the prompts' bracketed "[y]" default -- instead of crashing.
+    if AUTO_YES:
+        print(prompt + "y  [--yes]")
+        return ""
     try:
         return input(prompt)
     except EOFError:
@@ -36,6 +42,29 @@ def make_tarfile(output_filename, source_dir, exclude_dirs=[]):
                 ):
                     continue
                 tar.add(file_path, arcname=os.path.relpath(file_path, source_dir))
+
+
+def eos_url(path):
+    """xrootd URL for a CERN EOS path (existing root:// URLs pass through).
+
+    HTCondor's xrootd file-transfer plugin pulls root:// inputs directly on the
+    worker, so the big sandbox files (tarball + split json) never route through
+    the submit node's /afs -- which is what was overloading /afs.
+    """
+    if path.startswith("root://"):
+        return path.rstrip("/")
+    if path.startswith("/eos/user/") or path.startswith("/eos/home-"):
+        return "root://eosuser.cern.ch/" + path.rstrip("/")
+    if path.startswith("/eos/"):
+        return "root://eoscms.cern.ch/" + path.rstrip("/")
+    raise SystemExit(
+        f"ERROR: cannot stage the condor sandbox for outputDir '{path}'. "
+        "Use a /eos/... path or a root:// URL so the sandbox lives on EOS."
+    )
+
+
+def xrdcp_to_eos(local, url):
+    subprocess.run(["xrdcp", "-f", "-p", local, url], check=True)
 
 
 def get_condor_submitter_parser(parser):
@@ -77,6 +106,11 @@ def get_condor_submitter_parser(parser):
         "--accountingGroup",
         default=None,
         help="If specified, sets +AccountingGroup in the JDL (e.g. group_u_CMST3.all) for priority/quota purposes",
+    )
+    parser.add_argument(
+        "--memory",
+        default=None,
+        help="request_memory for each condor job (e.g. 8GB). Overrides the default nCPU*3GB; needed for memory-heavy workflows like the dijet regions (~6GB peak).",
     )
     return parser
 
@@ -194,6 +228,12 @@ def get_main_parser():
         action="store_true",
         help="Prepare the tarball, job directory, and submit.jdl but do not actually call condor_submit",
     )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Take the bracketed default for every interactive prompt without asking",
+    )
     parser = get_condor_submitter_parser(parser)
     return parser
 
@@ -201,6 +241,7 @@ def get_main_parser():
 if __name__ == "__main__":
     parser = get_main_parser()
     args = parser.parse_args()
+    AUTO_YES = args.yes
     print("Running with the following options:")
     print(args)
 
@@ -330,6 +371,24 @@ if __name__ == "__main__":
     with open(os.path.join(job_dir, "jobnum_list.txt"), "w") as f:
         f.write("\n".join([str(i) for i in range(counter)]))
 
+    ## Stage the two big sandbox inputs (tarball + split json) to EOS so
+    ## condor's xrootd plugin pulls them on the worker. Previously these were
+    ## transfer_input_files straight off /afs, so every job (and every retry)
+    ## re-read ~47 MB tarball + ~5 MB json through the submit-node schedd --
+    ## the source of the /afs overload. The small arguments.json / jobnum_list
+    ## stay on /afs. .condor_sandbox is dotted so it never matches the
+    ## hists_*/arrays_* globs the hadd/plot steps run over outputDir.
+    sandbox_url = eos_url(args.outputDir) + "/.condor_sandbox"
+    xrdcp_to_eos(
+        os.path.join(job_dir, "split_samples.json"),
+        f"{sandbox_url}/split_samples.json",
+    )
+    if not args.remoteRepo:
+        xrdcp_to_eos(
+            f"{base_dir}/BTVNanoCommissioning.tar.gz",
+            f"{sandbox_url}/BTVNanoCommissioning.tar.gz",
+        )
+
     ## store the jdl file
     max_retries = 10
     jdl_template = """Universe   = vanilla
@@ -366,15 +425,15 @@ Queue JOBNUM from {jobnum_file}
         executable=f"{base_dir}/condor/execute.sh",
         jobqueue=args.jobqueue,
         max_retries=max_retries,
-        request_memory=f"{args.nCPU * 3}GB",
+        request_memory=args.memory if args.memory else f"{args.nCPU * 3}GB",
         accounting_group=(
             f'+AccountingGroup = "{args.accountingGroup}"'
             if args.accountingGroup
             else ""
         ),
         log_dir=f"{base_dir}/{job_dir}/log",
-        transfer_input_files=f"{base_dir}/{job_dir}/arguments.json,{base_dir}/{job_dir}/split_samples.json,{base_dir}/{job_dir}/jobnum_list.txt"
-        + ("" if args.remoteRepo else f",{base_dir}/BTVNanoCommissioning.tar.gz"),
+        transfer_input_files=f"{base_dir}/{job_dir}/arguments.json,{base_dir}/{job_dir}/jobnum_list.txt,{sandbox_url}/split_samples.json"
+        + ("" if args.remoteRepo else f",{sandbox_url}/BTVNanoCommissioning.tar.gz"),
         nCPU=args.nCPU,
         batch_name=args.jobName,
         jobnum_file=f"{base_dir}/{job_dir}/jobnum_list.txt",
