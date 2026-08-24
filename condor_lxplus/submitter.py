@@ -92,6 +92,7 @@ def get_main_parser():
             "Summer23",
             "Summer23BPix",
             "Summer24",
+            "CustomSummer24",
             "2018-UL",
             "2017-UL",
             "2016preVFP-UL",
@@ -116,7 +117,27 @@ def get_main_parser():
         ],
         help="Run with systematics, all, weights_only(no JERC uncertainties included),JERC_split, None",
     )
+    parser.add_argument(
+        "--ttbar-reweights",
+        dest="ttbar_reweights",
+        default="none",
+        choices=["none", "hdamp_ml", "full"],
+        help=(
+            "Forwarded to runner.py --ttbar-reweights: enable additional "
+            "ttbar event reweights in correction.py. 'hdamp_ml' applies hdamp "
+            "ONNX up/down; 'full' additionally reserves hooks for frag/decay "
+            "reweights. Default: %(default)s"
+        ),
+    )
     parser.add_argument("--isArray", action="store_true", help="Output root files")
+    parser.add_argument(
+        "--array-systs",
+        dest="array_systs",
+        default="none",
+        choices=["none", "weights", "shifts", "both"],
+        help="Forwarded to runner.py --array-systs: how much systematic "
+        "content the --isArray trees carry. Default: %(default)s",
+    )
 
     parser.add_argument(
         "--noHist", action="store_true", help="Not output coffea histogram"
