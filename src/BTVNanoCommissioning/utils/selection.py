@@ -223,9 +223,30 @@ def ele_promptmvaid(events, campaign):
         )
     ele_etaSC = _ele_etaSC(events, campaign)
     elemask = (
-        (abs(ele_etaSC) < 1.4442) | ((abs(ele_etaSC) > 1.566) & (abs(ele_etaSC) < 2.5))
-    ) & (events.Electron.promptMVA >= 0.8)
-    # ) & (events.Electron.promptMVA >= 0.9)
+        (abs(ele_etaSC) < 1.4442)
+        | ((abs(ele_etaSC) > 1.566) & (abs(ele_etaSC) < 2.5))
+        # ) & (events.Electron.promptMVA >= 0.8) #Medium
+    ) & (
+        events.Electron.promptMVA >= 0.9
+    )  # Tight
+
+    # we also need to add the following cuts as preselection:
+    # miniPFRelIso_all < 0.4
+    # sip3d < 8
+    # |dxy| < 0.05
+    # |dz| < 0.1
+    # pT > 10 GeV
+    # Missing inner hits < 2
+    # |eta| < 2.5
+
+    elemask = elemask & (events.Electron.miniPFRelIso_all < 0.4)
+    elemask = elemask & (events.Electron.sip3d < 8)
+    elemask = elemask & (abs(events.Electron.dxy) < 0.05)
+    elemask = elemask & (abs(events.Electron.dz) < 0.1)
+    elemask = elemask & (events.Electron.pt > 10)
+    # elemask =  elemask & (events.Electron.MissingInnerHits < 2)
+    elemask = elemask & (abs(events.Electron.eta) < 2.5)
+
     return elemask
 
 
@@ -260,6 +281,37 @@ def mu_promptmvaid(events):
         & (events.Muon.tightId > 0.5)
         & (events.Muon.promptMVA > 0.64)
     )
+
+    # additionally the following cuts as preselection:
+    # miniPFRelIso_all < 0.4
+    # sip3d < 8
+    # |dxy| < 0.05 cm
+    # |dz| < 0.1 cm
+    # pT > 10 GeV
+    # abs eta < 2.4
+    # isGlobal || isTracker
+    # isPFCand == 1
+    # mediumID == 1
+
+    mumask = mumask & (events.Muon.miniPFRelIso_all < 0.4)
+    mumask = mumask & (events.Muon.sip3d < 8)
+    mumask = mumask & (abs(events.Muon.dxy) < 0.05)
+    mumask = mumask & (abs(events.Muon.dz) < 0.1)
+    mumask = mumask & (events.Muon.pt > 10)
+    mumask = mumask & (events.Muon.isGlobal | events.Muon.isTracker)
+    # Muon_isPFCand is not written by NanoAODv15, and this function is only
+    # ever reached for v15 campaigns (Summer24, CustomSummer24, Winter25,
+    # Prompt25 -- older campaigns route to mu_idiso instead), so the branch is
+    # absent every time. Verified by direct inspection of the Summer24,
+    # CustomSummer24 and Prompt25 tuples: 54 Muon_* branches, no isPFCand.
+    # Guarded rather than deleted so the cut applies again if a production
+    # restores the branch. Nothing is lost while it is absent: the POG Tight
+    # and Medium muon IDs both require isPFMuon, and tightId (above) and
+    # mediumId (below) are both already applied here.
+    if hasattr(events.Muon, "isPFCand"):
+        mumask = mumask & (events.Muon.isPFCand == 1)
+    mumask = mumask & (events.Muon.mediumId == 1)
+
     return mumask
 
 
