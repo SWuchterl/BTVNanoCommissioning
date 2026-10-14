@@ -108,6 +108,20 @@ arraySchema = {
 }
 
 
+def _write_tree(fout, name, data):
+    """Write a dict of arrays as a TTree.
+
+    uproot >= 5.7 creates a ROOT::RNTuple for `fout[name] = data`, not a TTree.
+    ROOT 6.30 -- what the rest of the chain runs on -- cannot read that at all
+    ("Unknown class ROOT::RNTuple"), so normalizeArray.C's
+    `(TTree *)f->Get("Events")` comes back NULL, and hadd and the JSROOT-based
+    file viewers fail on it too. mktree()+extend() keeps the TTree format.
+    """
+    data = {k: ak.Array(v) for k, v in data.items()}
+    tree = fout.mktree(name, {k: ak.type(v) for k, v in data.items()})
+    tree.extend(data)
+
+
 def _flatten_to_perjet(ev, ref_collection):
     """Flatten a per-event branch dict (as produced by uproot_writeable) to one row
     per jet, using `ref_collection` (e.g. "SelJet") to determine jets/event.
@@ -329,15 +343,19 @@ def array_writer(
             events_out = uproot_writeable(pruned_event, include=out_branch)
             if perJet:
                 events_out = _flatten_to_perjet(events_out, perJet_collection)
-            fout["Events"] = events_out
-        fout["TotalEventCount"] = ak.Array(
+            _write_tree(fout, "Events", events_out)
+        _write_tree(
+            fout,
+            "TotalEventCount",
             {
                 "TotalEventCount": [
                     nano_event.metadata["entrystop"] - nano_event.metadata["entrystart"]
                 ]
-            }
+            },
         )
         if not isRealData:
-            fout["TotalEventWeight"] = ak.Array(
-                {"TotalEventWeight": [ak.sum(nano_event.genWeight)]}
+            _write_tree(
+                fout,
+                "TotalEventWeight",
+                {"TotalEventWeight": [ak.sum(nano_event.genWeight)]},
             )
