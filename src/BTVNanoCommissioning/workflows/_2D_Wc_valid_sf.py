@@ -33,6 +33,8 @@ from BTVNanoCommissioning.utils.selection import (
     ele_mvatightid,
     MET_filters,
     softmu_mask,
+    fineflav,
+    jet_veto_lepton_clean,
 )
 
 
@@ -112,6 +114,10 @@ class NanoProcessor(processor.ProcessorABC):
             isolepdz, isolepdxy, isolepsip3d = 0.02, 0.01, 2.5
         else:
             raise ValueError(self.selMod, "is not a valid selection modifier.")
+        # Run 2 parity for the 2D SF selections: tighter soft-muon/jet pT
+        # ratio in both channels
+        if self.selMod in ["WcM_2D", "WcE_2D"]:
+            muonpTratioCut = 0.5
 
         output = {}
         if not self.noHist:
@@ -172,11 +178,15 @@ class NanoProcessor(processor.ProcessorABC):
                 "Prompt25",
             ]:  # NanoAODv15
                 iso_lep = events.Electron[
-                    (events.Electron.pt > 32) & ele_promptmvaid(events, self._campaign)
+                    (events.Electron.pt > 32)
+                    & (abs(events.Electron.eta) < 1.5)
+                    & ele_promptmvaid(events, self._campaign)
                 ]
             else:
                 iso_lep = events.Electron[
-                    (events.Electron.pt > 32) & ele_mvatightid(events, self._campaign)
+                    (events.Electron.pt > 32)
+                    & (abs(events.Electron.eta) < 1.5)
+                    & ele_mvatightid(events, self._campaign)
                 ]
         req_lep = ak.count(iso_lep.pt, axis=1) == 1
 
@@ -205,9 +215,13 @@ class NanoProcessor(processor.ProcessorABC):
         """
 
         ## Jet cuts
+        # additional cleaning against the loose veto-lepton collections
+        # (Run 2 parity); None-handling documented in jet_veto_lepton_clean.
+        req_clean_veto = jet_veto_lepton_clean(events, self._campaign)
         jet_sel = ak.fill_none(
             jet_id(events, self._campaign, min_pt=25)
-            & (ak.all(events.Jet.metric_table(iso_lep) > 0.5, axis=2)),
+            & (ak.all(events.Jet.metric_table(iso_lep) > 0.4, axis=2))
+            & req_clean_veto,
             False,
             axis=-1,
         )
@@ -417,7 +431,7 @@ class NanoProcessor(processor.ProcessorABC):
         req_dphi_Wjet = jetw_dphi > 2.0
         # delta Phi between leading jet and lepton
         jetl_dphi = abs(event_jet_0.delta_phi(iso_lep))
-        req_jetl_dphi = jetl_dphi < 2.0
+        req_jetl_dphi = jetl_dphi < 2.8
 
         # ==This is the manual calculation for transverse mass==
         """
@@ -446,6 +460,7 @@ class NanoProcessor(processor.ProcessorABC):
             & req_muNeEmSum
             & req_muEF
             & req_softmu_pt
+            & req_pTratio
             & req_mtw_max120
         )
 
@@ -524,6 +539,9 @@ class NanoProcessor(processor.ProcessorABC):
             svmass, svd3dsig = SV_link(events, event_level, jetindx1)
             pruned_ev["MuonJet", "svmass"] = svmass
             pruned_ev["MuonJet", "svd3dsig"] = svd3dsig
+        if not isRealData and "nBHadrons" in pruned_ev.SelJet.fields:
+            pruned_ev["SelJet", "fineFlav"] = fineflav(pruned_ev.SelJet)
+            pruned_ev["MuonJet", "fineFlav"] = fineflav(pruned_ev.MuonJet)
         pruned_ev["SoftMuon"] = ssmu
         pruned_ev["OtherJets"] = sotherjets
         pruned_ev["MET_pt"] = smet.pt

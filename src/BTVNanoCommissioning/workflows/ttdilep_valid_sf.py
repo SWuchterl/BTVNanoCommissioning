@@ -29,6 +29,8 @@ from BTVNanoCommissioning.utils.selection import (
     mu_promptmvaid,
     mu_idiso,
     MET_filters,
+    fineflav,
+    jet_veto_lepton_clean,
 )
 
 
@@ -125,6 +127,12 @@ class NanoProcessor(processor.ProcessorABC):
         ]
         req_trig = HLT_helper(events, triggers)
 
+        if self.selMod == "ttdilep_sf_2D":
+            # Veto-lepton jet cleaning (Run 2 parity), computed BEFORE
+            # events.Muon/Electron are overwritten with the selected leptons
+            # below; None-handling documented in jet_veto_lepton_clean.
+            req_clean_veto = jet_veto_lepton_clean(events, self._campaign)
+
         ## Muon cuts
         # muon twiki: https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideMuonIdRun2
         if self._campaign in [
@@ -183,6 +191,9 @@ class NanoProcessor(processor.ProcessorABC):
             ),
             False,
         )
+        if self.selMod == "ttdilep_sf_2D":
+            # additional cleaning against the loose veto-lepton collections
+            jetsel = jetsel & req_clean_veto
         event_jet = events.Jet[jetsel]
         # req_jets = ak.num(event_jet.pt) >= 2
         req_jets = ak.num(event_jet.pt) == 2
@@ -221,6 +232,15 @@ class NanoProcessor(processor.ProcessorABC):
                 },
                 with_name="PtEtaPhiMLorentzVector",
             )
+            req_MET = events.PuppiMET.pt > 20
+            # transverse mass of the (leading electron + leading muon) system
+            # against PuppiMET; only 1-cos(dphi) enters, so no phi wrapping is
+            # needed
+            ll = events.Electron[:, 0] + events.Muon[:, 0]
+            mtll = np.sqrt(
+                2 * ll.pt * event_MET.pt * (1 - np.cos(ll.delta_phi(event_MET)))
+            )
+            req_mtll = ak.fill_none(mtll > 100, False)
         req_metfilter = MET_filters(events, self._campaign)
 
         event_level = (
@@ -233,6 +253,8 @@ class NanoProcessor(processor.ProcessorABC):
             & req_dilep_mass
             & req_metfilter
         )
+        if self.selMod == "ttdilep_sf_2D":
+            event_level = event_level & req_MET & req_mtll
         event_level = ak.fill_none(event_level, False)
         if len(events[event_level]) == 0:
             if self.isArray:
@@ -280,6 +302,13 @@ class NanoProcessor(processor.ProcessorABC):
             pruned_ev["SelJet", "svd3dsig"] = ak.concatenate(
                 [svd3dsig[0][:, None], svd3dsig[1][:, None]], axis=1
             )
+
+        if (
+            self.selMod == "ttdilep_sf_2D"
+            and not isRealData
+            and "nBHadrons" in pruned_ev.SelJet.fields
+        ):
+            pruned_ev["SelJet", "fineFlav"] = fineflav(pruned_ev.SelJet)
 
         if self.selMod == "ttdilep_sf_2D":
             pruned_ev["MET"] = event_MET[event_level]

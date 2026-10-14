@@ -104,6 +104,18 @@ arraySchema = {
         "SelJet_btagUParTAK4BvC",
         "SelJet_btagNoPIDParTAK4HFvLF",
         "SelJet_btagNoPIDParTAK4BvC",
+        "SelJet_fineFlav",  # fine MC flavour (selection.fineflav); MC only
+        # per-scheme 2D tag selections/counters (2D ttsemilep validation);
+        # absent names are simply not written for the other channels
+        "passTag_nopid_legacy",
+        "passTag_nopid_phase4",
+        "passTag_upart_legacy",
+        "nbjet_nopid_legacy",
+        "nbjet_nopid_phase4",
+        "nbjet_upart_legacy",
+        "ncjet_nopid_legacy",
+        "ncjet_nopid_phase4",
+        "ncjet_upart_legacy",
     ],
 }
 
