@@ -93,6 +93,7 @@ def get_main_parser():
             "Summer23BPix",
             "Summer24",
             "CustomSummer24",
+            "CustomSummer25",
             "2018-UL",
             "2017-UL",
             "2016preVFP-UL",

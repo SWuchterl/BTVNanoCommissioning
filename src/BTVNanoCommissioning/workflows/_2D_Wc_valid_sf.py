@@ -168,6 +168,7 @@ class NanoProcessor(processor.ProcessorABC):
             if self._campaign in [
                 "Summer24",
                 "CustomSummer24",
+                "CustomSummer25",
                 "Winter25",
                 "Prompt25",
             ]:  # NanoAODv15
@@ -178,6 +179,7 @@ class NanoProcessor(processor.ProcessorABC):
             if self._campaign in [
                 "Summer24",
                 "CustomSummer24",
+                "CustomSummer25",
                 "Winter25",
                 "Prompt25",
             ]:  # NanoAODv15
@@ -328,6 +330,7 @@ class NanoProcessor(processor.ProcessorABC):
         if self._campaign in [
             "Summer24",
             "CustomSummer24",
+            "CustomSummer25",
             "Winter25",
             "Prompt25",
         ]:  # NanoAODv15
@@ -337,6 +340,7 @@ class NanoProcessor(processor.ProcessorABC):
         if self._campaign in [
             "Summer24",
             "CustomSummer24",
+            "CustomSummer25",
             "Winter25",
             "Prompt25",
         ]:  # NanoAODv15

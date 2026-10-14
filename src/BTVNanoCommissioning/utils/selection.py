@@ -52,6 +52,7 @@ def jet_id(events, campaign, max_eta=2.5, min_pt=20):
         "Winter24",
         "Summer24",
         "CustomSummer24",
+        "CustomSummer25",
         "Winter25",
         "Prompt25",
     ]:
@@ -176,7 +177,14 @@ def jet_id(events, campaign, max_eta=2.5, min_pt=20):
 def _ele_etaSC(events, campaign):
     return (
         events.Electron.eta + events.Electron.deltaEtaSC
-        if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]
+        if campaign
+        not in [
+            "Summer24",
+            "CustomSummer24",
+            "CustomSummer25",
+            "Winter25",
+            "Prompt25",
+        ]
         else events.Electron.superclusterEta
     )
 
@@ -199,7 +207,13 @@ def ele_mvatightid(events, campaign):
 
 def ele_promptmvaid(events, campaign):
     # https://indico.cern.ch/event/1575017/contributions/6635248/attachments/3115862/5524310/EGammaAug08.pdf
-    if campaign not in ["Summer24", "CustomSummer24", "Winter25", "Prompt25"]:
+    if campaign not in [
+        "Summer24",
+        "CustomSummer24",
+        "CustomSummer25",
+        "Winter25",
+        "Prompt25",
+    ]:
         # No promptMVA WP is defined/validated for this campaign yet. All
         # current call sites already gate on the campaign list above before
         # calling this function, so this branch should be unreachable; it's
@@ -818,6 +832,8 @@ btag_wp_dict = {
 # CustomSummer24 is a private NanoAODv15 production on the same MiniAOD
 # conditions as Summer24 -- reuse its precomputed WP thresholds.
 btag_wp_dict["2024_CustomSummer24"] = btag_wp_dict["2024_Summer24"]
+# CustomSummer25 uses the CustomSummer24 MC, so the WP boundaries stay the same.
+btag_wp_dict["2025_CustomSummer25"] = btag_wp_dict["2024_CustomSummer24"]
 
 
 import os, correctionlib
@@ -1122,3 +1138,4 @@ met_filters = {
 # CustomSummer24 is a private NanoAODv15 production on the same MiniAOD
 # conditions as Summer24 -- reuse its MET filter list.
 met_filters["CustomSummer24"] = met_filters["Summer24"]
+met_filters["CustomSummer25"] = met_filters["Prompt25"]
