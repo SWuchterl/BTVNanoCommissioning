@@ -1468,12 +1468,29 @@ def JME_shifts(
                                     np.float32,
                                 )
 
-                                ## apply nominal JER to up/down JES/JEC
-                                j["pt"] = j[f"pt_JEC{jes_syst}{var}"]
-                                j["mass"] = j[f"mass_JEC{jes_syst}{var}"]
-                                jer_smear_nom = get_JER(
-                                    correct_map, jername, j, "nom", jet_algo
-                                )
+                                ## apply nominal JER to up/down JES/JEC. Reuse
+                                ## the SAME jer_smear_nom/jer_smear_nom_t1
+                                ## computed once above (not a fresh
+                                ## get_JER(...,"nom",...) call here): for a
+                                ## GenJet-unmatched jet the smearing formula's
+                                ## stochastic draw is NOT reproducible across
+                                ## repeated evaluate() calls with identical
+                                ## (pt, eta) inputs -- it depends on call
+                                ## order/position, not just the declared
+                                ## inputs. Recomputing "nom" JER fresh inside
+                                ## this loop (the previous behaviour) drew a
+                                ## DIFFERENT random smear than the true
+                                ## baseline for every unmatched jet, so every
+                                ## JES-source template carried a spurious
+                                ## random offset relative to nominal --
+                                ## exactly reproducing bit-for-bit for
+                                ## "up" and "down" of the same source (same
+                                ## call position each time) while differing
+                                ## from nominal (a different call position).
+                                ## "nom" JER is physically independent of
+                                ## which JES source is being varied, so the
+                                ## single cached value is also the correct
+                                ## one to use, not just the reproducible one.
                                 j[f"pt_JEC{jes_syst}{var}_JERnom"] = ak.values_astype(
                                     j[f"pt_JEC{jes_syst}{var}"] * jer_smear_nom,
                                     np.float32,
@@ -1483,14 +1500,10 @@ def JME_shifts(
                                     np.float32,
                                 )
                                 t1j["pt"] = t1j[f"pt_JEC{jes_syst}{var}"]
-                                jer_smear_nom_t1 = get_JER(
-                                    correct_map, jername, t1j, "nom", jet_algo
-                                )
                                 t1j[f"pt_JEC{jes_syst}{var}_JERnom"] = ak.values_astype(
                                     t1j[f"pt_JEC{jes_syst}{var}"] * jer_smear_nom_t1,
                                     np.float32,
                                 )
-                                t1j["pt"] = t1j[f"pt_JEC{jes_syst}{var}_JERnom"]
                                 _t1jets_jesvar = ak.unflatten(t1j, nt1j)
                                 _t1jets_jesvar["pt_noMuL1"] = ak.unflatten(
                                     t1j["pt_noMuL1"], nt1j
