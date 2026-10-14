@@ -117,6 +117,57 @@ arraySchema = {
         "ncjet_nopid_phase4",
         "ncjet_upart_legacy",
     ],
+    # Dijet tag-and-probe: SLIM's probe-jet content (SelJet), the same content
+    # again for the away/tag jet so the swapped pairing can be rebuilt offline,
+    # the dijet topology variables the region is cut on (so the cuts can be
+    # tightened downstream), and the trigger prescale weight.
+    "SLIM_DIJET": _WEIGHT_BRANCHES
+    + [
+        "xSecWeight",
+        "psweight",
+        "njet",
+        "ptave",
+        "alpha",
+        "asym",
+        "dphi_jj",
+        "dr_j3",
+        # away-jet 2D category and tag class, one pair per tagger the tuple
+        # carries (dijet_2D.TAG_TAGGERS); absent names are simply not written
+        "tag_2Dbin_nopid",
+        "tag_cls_nopid",
+        "tag_2Dbin_upart",
+        "tag_cls_upart",
+        "SelJet_pt",
+        "SelJet_eta",
+        "SelJet_phi",
+        "SelJet_mass",
+        "SelJet_hadronFlavour",
+        "SelJet_partonFlavour",
+        "SelJet_svmass",
+        "SelJet_nSVs",
+        "SelJet_btagPNetHFvLF",
+        "SelJet_btagPNetBvC",
+        "SelJet_btagUParTAK4HFvLF",
+        "SelJet_btagUParTAK4BvC",
+        "SelJet_btagNoPIDParTAK4HFvLF",
+        "SelJet_btagNoPIDParTAK4BvC",
+        "SelJet_fineFlav",  # fine MC flavour (selection.fineflav); MC only
+        "TagJet_pt",
+        "TagJet_eta",
+        "TagJet_phi",
+        "TagJet_mass",
+        "TagJet_hadronFlavour",
+        "TagJet_partonFlavour",
+        "TagJet_svmass",
+        "TagJet_nSVs",
+        "TagJet_btagPNetHFvLF",
+        "TagJet_btagPNetBvC",
+        "TagJet_btagUParTAK4HFvLF",
+        "TagJet_btagUParTAK4BvC",
+        "TagJet_btagNoPIDParTAK4HFvLF",
+        "TagJet_btagNoPIDParTAK4BvC",
+        "TagJet_fineFlav",  # fine MC flavour (selection.fineflav); MC only
+    ],
 }
 
 
