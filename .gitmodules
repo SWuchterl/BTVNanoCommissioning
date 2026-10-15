@@ -1,6 +1,6 @@
 [submodule "SFbc-2D"]
 	path = SFbc-2D
-	url = ssh://git@gitlab.cern.ch:7999/cms-btv/btv-sf-code/sfbc-2d.git
+	url = ssh://git@gitlab.cern.ch:7999/sewuchte/sfbc-2d.git
 [submodule "autobtv"]
 	path = autobtv
 	url = ssh://git@gitlab.cern.ch:7999/cms-analysis/btv/software-and-algorithms/autobtv.git
